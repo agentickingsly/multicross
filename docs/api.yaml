@@ -1,0 +1,274 @@
+openapi: "3.0.3"
+info:
+  title: Multicross API
+  version: "1.0.0"
+  description: REST API for the Multicross multiplayer crossword app.
+
+servers:
+  - url: http://localhost:3001/api
+    description: Local development
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        displayName: { type: string }
+        createdAt: { type: string, format: date-time }
+      required: [id, email, displayName, createdAt]
+
+    Puzzle:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        author: { type: string }
+        width: { type: integer }
+        height: { type: integer }
+        grid: { type: array, items: { type: array, items: { type: string, nullable: true } } }
+        clues:
+          type: object
+          properties:
+            across: { type: object, additionalProperties: { type: string } }
+            down: { type: object, additionalProperties: { type: string } }
+        createdAt: { type: string, format: date-time }
+      required: [id, title, author, width, height, grid, clues, createdAt]
+
+    Game:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        puzzleId: { type: string, format: uuid }
+        roomCode: { type: string, minLength: 6, maxLength: 6 }
+        status: { type: string, enum: [waiting, active, complete] }
+        createdBy: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+      required: [id, puzzleId, roomCode, status, createdBy, createdAt]
+
+    GameParticipant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        gameId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        joinedAt: { type: string, format: date-time }
+        color: { type: string, description: "Hex color string, e.g. #ff5733" }
+      required: [id, gameId, userId, joinedAt, color]
+
+    GameCell:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        gameId: { type: string, format: uuid }
+        row: { type: integer }
+        col: { type: integer }
+        value: { type: string, maxLength: 1 }
+        filledBy: { type: string, format: uuid, nullable: true }
+        filledAt: { type: string, format: date-time, nullable: true }
+      required: [id, gameId, row, col, value]
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                displayName: { type: string }
+                password: { type: string, minLength: 8 }
+              required: [email, displayName, password]
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  token: { type: string }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/login:
+    post:
+      summary: Log in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string }
+              required: [email, password]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  token: { type: string }
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /puzzles:
+    get:
+      summary: List all puzzles
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  puzzles:
+                    type: array
+                    items: { $ref: "#/components/schemas/Puzzle" }
+
+  /puzzles/{id}:
+    get:
+      summary: Get a puzzle by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  puzzle: { $ref: "#/components/schemas/Puzzle" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /games:
+    post:
+      summary: Create a new game room
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                puzzleId: { type: string, format: uuid }
+              required: [puzzleId]
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game: { $ref: "#/components/schemas/Game" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /games/{id}/join:
+    post:
+      summary: Join a game room
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId: { type: string, format: uuid }
+              required: [userId]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game: { $ref: "#/components/schemas/Game" }
+                  participant: { $ref: "#/components/schemas/GameParticipant" }
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /games/{id}:
+    get:
+      summary: Get game state
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game: { $ref: "#/components/schemas/Game" }
+                  participants:
+                    type: array
+                    items: { $ref: "#/components/schemas/GameParticipant" }
+                  cells:
+                    type: array
+                    items: { $ref: "#/components/schemas/GameCell" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
