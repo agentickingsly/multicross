@@ -1,0 +1,98 @@
+[
+  {
+    "title": "Mini Monday",
+    "author": "Seed Bot",
+    "width": 5,
+    "height": 5,
+    "grid": [
+      ["C", "A", "K", "E", "S"],
+      ["A", null, "I", null, "T"],
+      ["T", "A", "N", "G", "O"],
+      ["S", null, "D", null, "P"],
+      ["T", "R", "E", "A", "T"]
+    ],
+    "clues": {
+      "across": {
+        "1": "Baked desserts",
+        "3": "Latin dance",
+        "5": "Sweet reward"
+      },
+      "down": {
+        "1": "Feline",
+        "2": "Crossword fill, informally",
+        "3": "Opposite of loose",
+        "4": "Dance genre",
+        "5": "Resting place"
+      }
+    }
+  },
+  {
+    "title": "Week Starter",
+    "author": "Seed Bot",
+    "width": 7,
+    "height": 7,
+    "grid": [
+      ["S", "C", "R", "A", "B", "B", "L"],
+      ["T", null, "O", null, "A", null, "E"],
+      ["A", "C", "O", "R", "N", "S", "T"],
+      ["R", null, "M", null, "K", null, "T"],
+      ["S", "P", "A", "R", "K", "L", "E"],
+      ["H", null, "N", null, "S", null, "R"],
+      ["I", "D", "E", "A", "S", "E", "T"]
+    ],
+    "clues": {
+      "across": {
+        "1": "Word game with tiles",
+        "3": "Oak tree seeds",
+        "5": "Glitter and shine",
+        "7": "Creative thoughts"
+      },
+      "down": {
+        "1": "Celestial bodies",
+        "2": "Tree nut, informally",
+        "3": "Bank of a river",
+        "4": "Written records",
+        "5": "Book of maps",
+        "6": "Letter carrier's org.",
+        "7": "Alphabet opener"
+      }
+    }
+  },
+  {
+    "title": "Wednesday Challenge",
+    "author": "Seed Bot",
+    "width": 9,
+    "height": 9,
+    "grid": [
+      ["B", "R", "A", "I", "N", "S", "T", "O", "R"],
+      ["L", null, "L", null, "O", null, "R", null, "E"],
+      ["A", "N", "G", "E", "L", "F", "I", "S", "H"],
+      ["S", null, "A", null, "S", null, "P", null, "A"],
+      ["T", "R", "E", "A", "S", "U", "R", "E", "S"],
+      ["O", null, "E", null, "T", null, "L", null, "H"],
+      ["F", "L", "A", "M", "I", "N", "G", "O", "S"],
+      ["F", null, "S", null, "C", null, "H", null, "T"],
+      ["S", "T", "R", "E", "A", "M", "L", "I", "N"]
+    ],
+    "clues": {
+      "across": {
+        "1": "Group creativity session",
+        "3": "Colorful reef dweller",
+        "5": "Hidden riches",
+        "7": "Pink wading birds",
+        "9": "Make more aerodynamic"
+      },
+      "down": {
+        "1": "Loud noise",
+        "2": "Celestial messenger",
+        "3": "Mathematical approach",
+        "4": "Legal rights",
+        "5": "Without sound",
+        "6": "Tap lightly",
+        "7": "Moving water",
+        "8": "Possesses",
+        "9": "Thin line"
+      }
+    }
+  }
+]
