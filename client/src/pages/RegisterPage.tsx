@@ -94,7 +94,14 @@ export default function RegisterPage() {
       localStorage.setItem("multicross_user", JSON.stringify(user));
       navigate("/lobby");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed.");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "Failed to fetch" || msg.toLowerCase().includes("connect")) {
+        setError("Could not connect to server — is it running?");
+      } else if (msg.toLowerCase().includes("email") || msg.toLowerCase().includes("exists") || msg.toLowerCase().includes("duplicate")) {
+        setError("An account with this email already exists");
+      } else {
+        setError(msg || "Registration failed.");
+      }
     } finally {
       setLoading(false);
     }

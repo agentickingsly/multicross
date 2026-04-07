@@ -90,7 +90,12 @@ export default function LoginPage() {
       localStorage.setItem("multicross_user", JSON.stringify(user));
       navigate("/lobby");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed.");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "Failed to fetch" || msg.toLowerCase().includes("connect")) {
+        setError("Could not connect to server — is it running?");
+      } else {
+        setError("Invalid email or password");
+      }
     } finally {
       setLoading(false);
     }

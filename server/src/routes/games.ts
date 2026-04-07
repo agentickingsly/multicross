@@ -102,8 +102,8 @@ router.post("/:id/join", requireAuth, async (req, res) => {
     return;
   }
   const g = gameResult.rows[0];
-  if (g.status !== "waiting") {
-    res.status(400).json({ error: "Game is not in waiting status" });
+  if (g.status === "complete") {
+    res.status(400).json({ error: "Game is already complete" });
     return;
   }
 
@@ -168,7 +168,10 @@ router.get("/:id", requireAuth, async (req, res) => {
   const g = gameResult.rows[0];
 
   const participantsResult = await pool.query(
-    `SELECT id, game_id, user_id, joined_at, color FROM game_participants WHERE game_id = $1`,
+    `SELECT gp.id, gp.game_id, gp.user_id, gp.joined_at, gp.color, u.display_name
+     FROM game_participants gp
+     JOIN users u ON u.id = gp.user_id
+     WHERE gp.game_id = $1`,
     [gameId]
   );
   const cellsResult = await pool.query(
@@ -193,6 +196,7 @@ router.get("/:id", requireAuth, async (req, res) => {
       userId: p.user_id,
       joinedAt: p.joined_at,
       color: p.color,
+      displayName: p.display_name,
     })),
     cells: cellsResult.rows.map((c) => ({
       id: c.id,

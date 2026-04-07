@@ -119,3 +119,52 @@ expired token mid-session will redirect to `/login`.
 
 ## New Dependencies
 - `socket.io-client` — already listed in `client/package.json`; hoisted to root `node_modules` by npm workspaces
+
+---
+
+# Session 7 — Polish & Bug Fixes DONE
+
+## Files Modified
+
+### /server/src/routes/games.ts
+- **Bug fix:** `POST /:id/join` now allows joining `waiting` OR `active` games; only rejects `complete`. Fixes second-player join failing after game transitions to `active`.
+- **Enhancement:** `GET /:id` now JOINs the `users` table so each participant includes `displayName` in the response.
+
+### /client/src/ws/socket.ts
+- Added `reconnection: true, reconnectionAttempts: 5, reconnectionDelay: 1000` to socket options.
+- Added `onConnect(handler)` method to let pages hook into connect/reconnect events.
+
+### /client/src/pages/GamePage.tsx
+- **Bug fix:** Other players now display their real `displayName` (from API response) instead of `Player xxxx`.
+- **Reconnection:** On WS reconnect, automatically re-emits `join_room` to rejoin the room.
+- **Room code copy:** Added "Copy" button next to room code; shows "Copied!" for 2 seconds after click.
+- **Completion modal:** Shows time taken (calculated from page load), player names with colour dots, cells-filled counts.
+
+### /client/src/pages/LobbyPage.tsx
+- Join input placeholder updated to "Enter 6-letter room code".
+- `maxLength` changed from 8 to 6.
+- Client-side validation: rejects input that isn't exactly 6 characters.
+- Error messages: "Game not found — check the room code and try again." / "Could not connect to server — is it running?".
+
+### /client/src/pages/LoginPage.tsx
+- Network error → "Could not connect to server — is it running?".
+- Any auth failure → "Invalid email or password".
+
+### /client/src/pages/RegisterPage.tsx
+- Network error → "Could not connect to server — is it running?".
+- Duplicate email → "An account with this email already exists".
+
+## Definition of Done
+
+- [x] Player names show correctly for all participants (loaded via GET /api/games/:id JOIN users)
+- [x] Second player can join a game that's already `active`
+- [x] Loading states on lobby and game page (preserved from prior sessions)
+- [x] Auth error messages are clear and accurate
+- [x] Room code has a copy button that works
+- [x] TypeScript compiles with zero errors (client + server)
+- [x] Two-player game flow works end to end without errors
+
+## Known Limitation
+- `participant_joined` WS event does not include `displayName`, so a late-joining player shows as `Player xxxx` in other clients' sidebars until reload. Fixing this requires changes to the WS server (out of scope for this session).
+
+## No new dependencies added

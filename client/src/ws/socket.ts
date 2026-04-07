@@ -15,6 +15,9 @@ export const ws = {
     if (socket?.connected) return;
     socket = io("http://localhost:3001", {
       auth: { token },
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     }) as AppSocket;
     socket.on("connect_error", (err) => {
       console.error("[WS] connect_error:", err.message);
@@ -44,6 +47,11 @@ export const ws = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       socket?.off(event as any, handler as any);
     };
+  },
+
+  onConnect(handler: () => void): () => void {
+    socket?.on("connect", handler);
+    return () => socket?.off("connect", handler);
   },
 
   get isConnected(): boolean {

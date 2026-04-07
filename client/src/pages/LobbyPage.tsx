@@ -180,13 +180,24 @@ export default function LobbyPage() {
       setJoinError("Enter a room code.");
       return;
     }
+    if (code.length !== 6) {
+      setJoinError("Room code must be exactly 6 characters.");
+      return;
+    }
     setJoinError("");
     setJoining(true);
     try {
       const result = await joinGame(code);
       navigate(`/game/${result.gameId}`);
     } catch (err) {
-      setJoinError(err instanceof Error ? err.message : "Game not found.");
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "Game not found" || msg.toLowerCase().includes("not found")) {
+        setJoinError("Game not found — check the room code and try again.");
+      } else if (msg === "Failed to fetch" || msg.toLowerCase().includes("connect")) {
+        setJoinError("Could not connect to server — is it running?");
+      } else {
+        setJoinError(msg || "Game not found.");
+      }
     } finally {
       setJoining(false);
     }
@@ -212,11 +223,11 @@ export default function LobbyPage() {
             <input
               style={s.joinInput}
               type="text"
-              placeholder="Room code (e.g. ABCD12)"
+              placeholder="Enter 6-letter room code"
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && handleJoinGame()}
-              maxLength={8}
+              maxLength={6}
             />
             <button style={s.joinBtn} onClick={handleJoinGame} disabled={joining}>
               {joining ? "Joining…" : "Join"}

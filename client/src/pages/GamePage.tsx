@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type {
   Game,
@@ -21,6 +21,16 @@ interface CursorPos {
   col: number;
 }
 
+// Server returns displayName as an extra field alongside the typed GameParticipant
+type ParticipantWithName = GameParticipant & { displayName?: string };
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
 export default function GamePage() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -35,12 +45,14 @@ export default function GamePage() {
 
   const [game, setGame] = useState<Game | null>(null);
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
-  const [participants, setParticipants] = useState<GameParticipant[]>([]);
+  const [participants, setParticipants] = useState<ParticipantWithName[]>([]);
   const [cells, setCells] = useState<GameCell[]>([]);
   const [cursors, setCursors] = useState<Record<string, CursorPos>>({});
   const [completion, setCompletion] = useState<GameCompletePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const startTimeRef = useRef<number>(Date.now());
 
   // Load game + puzzle
   useEffect(() => {
@@ -55,10 +67,11 @@ export default function GamePage() {
     getGame(gameId)
       .then(async ({ game, participants, cells }) => {
         setGame(game);
-        setParticipants(participants);
+        setParticipants(participants as ParticipantWithName[]);
         setCells(cells);
         const { puzzle } = await getPuzzle(game.puzzleId);
         setPuzzle(puzzle);
+        startTimeRef.current = Date.now();
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -70,6 +83,15 @@ export default function GamePage() {
       ws.disconnect();
     };
   }, [gameId]);
+
+  // Re-emit join_room on WS reconnect
+  useEffect(() => {
+    if (!gameId || !currentUser) return;
+    const unsub = ws.onConnect(() => {
+      ws.emit("join_room", { gameId, userId: currentUser.id });
+    });
+    return unsub;
+  }, [gameId, currentUser]);
 
   // WS event listeners
   useEffect(() => {
@@ -109,7 +131,7 @@ export default function GamePage() {
     const unsubJoined = ws.on("participant_joined", (payload: ParticipantJoinedPayload) => {
       setParticipants((prev) => {
         if (prev.some((p) => p.id === payload.participant.id)) return prev;
-        return [...prev, payload.participant];
+        return [...prev, payload.participant as ParticipantWithName];
       });
     });
 
@@ -164,6 +186,19 @@ export default function GamePage() {
     [gameId, currentUser]
   );
 
+  function handleCopyRoomCode() {
+    if (!game) return;
+    navigator.clipboard.writeText(game.roomCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  function getDisplayName(p: ParticipantWithName): string {
+    if (p.userId === currentUser?.id) return currentUser.displayName;
+    return p.displayName ?? `Player ${p.userId.slice(-4)}`;
+  }
+
   // ── Styles ──────────────────────────────────────────────────────────────────
 
   const s: Record<string, React.CSSProperties> = {
@@ -201,6 +236,16 @@ export default function GamePage() {
       fontSize: "0.875rem",
       letterSpacing: "0.1em",
       fontWeight: "600",
+    },
+    copyBtn: {
+      background: copied ? "rgba(5,150,105,0.4)" : "rgba(255,255,255,0.15)",
+      color: "#fff",
+      border: "none",
+      borderRadius: "6px",
+      padding: "0.3rem 0.6rem",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s",
     },
     content: {
       maxWidth: "980px",
@@ -325,9 +370,12 @@ export default function GamePage() {
           </button>
           <div style={s.headerTitle}>{puzzle.title}</div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <span style={{ fontSize: "0.8rem", color: "#93c5fd" }}>Room</span>
           <span style={s.roomCode}>{game.roomCode}</span>
+          <button style={s.copyBtn} onClick={handleCopyRoomCode}>
+            {copied ? "Copied!" : "Copy"}
+          </button>
         </div>
       </header>
 
@@ -352,9 +400,7 @@ export default function GamePage() {
               <div key={p.id} style={s.participantRow}>
                 <div style={{ ...s.colorDot, background: p.color }} />
                 <span>
-                  {p.userId === currentUser?.id
-                    ? currentUser.displayName
-                    : `Player ${p.userId.slice(-4)}`}
+                  {getDisplayName(p)}
                   {p.userId === currentUser?.id && (
                     <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}> (you)</span>
                   )}
@@ -412,19 +458,23 @@ export default function GamePage() {
           <div style={s.modalBox}>
             <div style={s.modalTitle}>Puzzle Complete!</div>
             <p style={{ margin: 0, color: "#374151" }}>
-              Finished at{" "}
-              {new Date(completion.completedAt).toLocaleTimeString()}
+              Time: {formatDuration(Date.now() - startTimeRef.current)}
             </p>
             {completion.stats.length > 0 && (
               <div style={{ textAlign: "left" }}>
                 <div style={{ fontWeight: "600", marginBottom: "0.5rem" }}>
                   Cells filled:
                 </div>
-                {completion.stats.map((stat) => (
-                  <div key={stat.userId} style={{ fontSize: "0.875rem", color: "#475569" }}>
-                    Player {stat.userId.slice(-4)}: {stat.cellsFilled} cells
-                  </div>
-                ))}
+                {completion.stats.map((stat) => {
+                  const p = participants.find((x) => x.userId === stat.userId);
+                  const name = p ? getDisplayName(p) : `Player ${stat.userId.slice(-4)}`;
+                  return (
+                    <div key={stat.userId} style={{ fontSize: "0.875rem", color: "#475569", display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.2rem 0" }}>
+                      {p && <div style={{ ...s.colorDot, background: p.color }} />}
+                      {name}: {stat.cellsFilled} cells
+                    </div>
+                  );
+                })}
               </div>
             )}
             <button style={s.modalBtn} onClick={() => navigate("/lobby")}>
