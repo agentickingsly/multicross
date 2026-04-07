@@ -9,6 +9,8 @@ import type {
   GameCompletePayload,
   CursorMovedPayload,
   CellUpdatedPayload,
+  ParticipantJoinedPayload,
+  ParticipantLeftPayload,
 } from "@multicross/shared";
 import { getGame, getPuzzle } from "../api/client";
 import { ws } from "../ws/socket";
@@ -46,6 +48,10 @@ export default function GamePage() {
     const token = localStorage.getItem("multicross_token") ?? "";
     ws.connect(token);
 
+    if (currentUser) {
+      ws.emit("join_room", { gameId, userId: currentUser.id });
+    }
+
     getGame(gameId)
       .then(async ({ game, participants, cells }) => {
         setGame(game);
@@ -57,7 +63,12 @@ export default function GamePage() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
 
-    return () => ws.disconnect();
+    return () => {
+      if (currentUser) {
+        ws.emit("leave_room", { gameId, userId: currentUser.id });
+      }
+      ws.disconnect();
+    };
   }, [gameId]);
 
   // WS event listeners
@@ -95,21 +106,23 @@ export default function GamePage() {
       setCompletion(payload);
     });
 
-    // Demo: simulate a second player's cursor after 1.5s
-    const demoTimer = setTimeout(() => {
-      ws.mockReceive("cursor_moved", {
-        userId: "user-ai",
-        row: 1,
-        col: 0,
-        color: "#ef4444",
+    const unsubJoined = ws.on("participant_joined", (payload: ParticipantJoinedPayload) => {
+      setParticipants((prev) => {
+        if (prev.some((p) => p.id === payload.participant.id)) return prev;
+        return [...prev, payload.participant];
       });
-    }, 1500);
+    });
+
+    const unsubLeft = ws.on("participant_left", (payload: ParticipantLeftPayload) => {
+      setParticipants((prev) => prev.filter((p) => p.userId !== payload.userId));
+    });
 
     return () => {
       unsubCursor();
       unsubCell();
       unsubComplete();
-      clearTimeout(demoTimer);
+      unsubJoined();
+      unsubLeft();
     };
   }, [gameId]);
 

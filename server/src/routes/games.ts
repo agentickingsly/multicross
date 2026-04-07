@@ -143,6 +143,16 @@ router.post("/:id/join", requireAuth, async (req, res) => {
 });
 
 // GET /api/games/:id
+router.get("/", requireAuth, async (req, res) => {
+  const { roomCode } = req.query;
+  if (!roomCode) { res.status(400).json({ error: "roomCode required" }); return; }
+  const result = await pool.query(
+    `SELECT id FROM games WHERE room_code = $1`, [String(roomCode).toUpperCase()]
+  );
+  if (!result.rows[0]) { res.status(404).json({ error: "Game not found" }); return; }
+  res.json({ game: { id: result.rows[0].id } });
+});
+
 router.get("/:id", requireAuth, async (req, res) => {
   const gameId = req.params.id;
 
