@@ -1,5 +1,5 @@
 import { useState, FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { login } from "../api/client";
 
 const s: Record<string, React.CSSProperties> = {
@@ -71,6 +71,8 @@ const s: Record<string, React.CSSProperties> = {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const stateMessage = (location.state as { message?: string } | null)?.message ?? "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -107,6 +109,7 @@ export default function LoginPage() {
         <h1 style={s.title}>Multicross</h1>
         <p style={{ margin: 0, color: "#64748b" }}>Sign in to your account</p>
 
+        {stateMessage && <div style={s.error}>{stateMessage}</div>}
         {error && <div style={s.error}>{error}</div>}
 
         <label style={s.label}>

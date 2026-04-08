@@ -137,7 +137,9 @@ export default function LobbyPage() {
   const navigate = useNavigate();
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [loadingPuzzles, setLoadingPuzzles] = useState(true);
+  const [puzzleError, setPuzzleError] = useState("");
   const [creatingId, setCreatingId] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<{ id: string; msg: string } | null>(null);
   const [roomCode, setRoomCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joining, setJoining] = useState(false);
@@ -153,6 +155,7 @@ export default function LobbyPage() {
   useEffect(() => {
     getPuzzles()
       .then(({ puzzles }) => setPuzzles(puzzles))
+      .catch((err) => setPuzzleError(err instanceof Error ? err.message : "Failed to load puzzles"))
       .finally(() => setLoadingPuzzles(false));
   }, []);
 
@@ -164,11 +167,12 @@ export default function LobbyPage() {
 
   async function handleCreateGame(puzzleId: string) {
     setCreatingId(puzzleId);
+    setCreateError(null);
     try {
       const { game } = await createGame(puzzleId);
       navigate(`/game/${game.id}`);
     } catch (err) {
-      console.error(err);
+      setCreateError({ id: puzzleId, msg: err instanceof Error ? err.message : "Failed to create game" });
     } finally {
       setCreatingId(null);
     }
@@ -242,25 +246,31 @@ export default function LobbyPage() {
         {/* Available puzzles */}
         <div style={s.section}>
           <h2 style={s.sectionTitle}>Start a new game</h2>
+          {puzzleError && <div style={s.error}>{puzzleError}</div>}
           {loadingPuzzles ? (
             <div style={s.loading}>Loading puzzles…</div>
           ) : (
             <div style={s.puzzleList}>
               {puzzles.map((puzzle) => (
-                <div key={puzzle.id} style={s.puzzleCard}>
-                  <div style={s.puzzleInfo}>
-                    <div style={s.puzzleTitle}>{puzzle.title}</div>
-                    <div style={s.puzzleMeta}>
-                      By {puzzle.author} · {puzzle.width}×{puzzle.height}
+                <div key={puzzle.id}>
+                  <div style={s.puzzleCard}>
+                    <div style={s.puzzleInfo}>
+                      <div style={s.puzzleTitle}>{puzzle.title}</div>
+                      <div style={s.puzzleMeta}>
+                        By {puzzle.author} · {puzzle.width}×{puzzle.height}
+                      </div>
                     </div>
+                    <button
+                      style={s.createBtn}
+                      onClick={() => handleCreateGame(puzzle.id)}
+                      disabled={creatingId === puzzle.id}
+                    >
+                      {creatingId === puzzle.id ? "Creating…" : "Create game"}
+                    </button>
                   </div>
-                  <button
-                    style={s.createBtn}
-                    onClick={() => handleCreateGame(puzzle.id)}
-                    disabled={creatingId === puzzle.id}
-                  >
-                    {creatingId === puzzle.id ? "Creating…" : "Create game"}
-                  </button>
+                  {createError?.id === puzzle.id && (
+                    <div style={s.error}>{createError.msg}</div>
+                  )}
                 </div>
               ))}
             </div>

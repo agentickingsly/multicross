@@ -5,9 +5,23 @@ import RegisterPage from "./pages/RegisterPage";
 import LobbyPage from "./pages/LobbyPage";
 import GamePage from "./pages/GamePage";
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number };
+    return typeof payload.exp === "number" && payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem("multicross_token");
   if (!token) return <Navigate to="/login" replace />;
+  if (isTokenExpired(token)) {
+    localStorage.removeItem("multicross_token");
+    localStorage.removeItem("multicross_user");
+    return <Navigate to="/login" state={{ message: "Session expired" }} replace />;
+  }
   return <>{children}</>;
 }
 

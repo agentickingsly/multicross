@@ -108,7 +108,7 @@ export default function CrosswordGrid({
 }: Props) {
   const { grid, height, width } = puzzle;
 
-  const [selected, setSelected] = useState<CursorPos | null>({ row: 0, col: 0 });
+  const [selected, setSelected] = useState<CursorPos | null>(null);
   const [direction, setDirection] = useState<Direction>("across");
   const [highlightedCells, setHighlightedCells] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);

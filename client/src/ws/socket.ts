@@ -13,7 +13,7 @@ let socket: AppSocket | null = null;
 export const ws = {
   connect(token: string): void {
     if (socket?.connected) return;
-    socket = io("http://localhost:3001", {
+    socket = io(import.meta.env.VITE_API_URL, {
       auth: { token },
       reconnection: true,
       reconnectionAttempts: 5,
