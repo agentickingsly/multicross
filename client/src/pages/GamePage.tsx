@@ -60,10 +60,6 @@ export default function GamePage() {
     const token = localStorage.getItem("multicross_token") ?? "";
     ws.connect(token);
 
-    if (currentUser) {
-      ws.emit("join_room", { gameId, userId: currentUser.id });
-    }
-
     getGame(gameId)
       .then(async ({ game, participants, cells }) => {
         setGame(game);

@@ -57,7 +57,7 @@ router.post("/register", async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post("/login", async (req, res) => {
+router.post("/login", async (req, res, next) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.errors[0].message });
@@ -65,34 +65,38 @@ router.post("/login", async (req, res) => {
   }
   const { email, password } = parsed.data;
 
-  const result = await pool.query(
-    `SELECT id, email, display_name, password_hash, created_at FROM users WHERE email = $1`,
-    [email]
-  );
-  const row = result.rows[0];
-  if (!row) {
-    res.status(401).json({ error: "Invalid credentials" });
-    return;
-  }
+  try {
+    const result = await pool.query(
+      `SELECT id, email, display_name, password_hash, created_at FROM users WHERE email = $1`,
+      [email]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
 
-  const match = await bcrypt.compare(password, row.password_hash);
-  if (!match) {
-    res.status(401).json({ error: "Invalid credentials" });
-    return;
-  }
+    const match = await bcrypt.compare(password, row.password_hash);
+    if (!match) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
 
-  const user = {
-    id: row.id,
-    email: row.email,
-    displayName: row.display_name,
-    createdAt: row.created_at,
-  };
-  const token = jwt.sign(
-    { userId: user.id, email: user.email },
-    process.env.JWT_SECRET!,
-    { expiresIn: "7d" }
-  );
-  res.json({ user, token });
+    const user = {
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name,
+      createdAt: row.created_at,
+    };
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET!,
+      { expiresIn: "7d" }
+    );
+    res.json({ user, token });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

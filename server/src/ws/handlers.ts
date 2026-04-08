@@ -141,8 +141,9 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // join_room
     // -----------------------------------------------------------------------
-    s.on("join_room", async ({ gameId, userId }) => {
+    s.on("join_room", async ({ gameId }) => {
       try {
+        const userId = s.data.user.userId;
         // Verify game exists in postgres
         const gameResult = await pool.query(
           `SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
@@ -217,8 +218,9 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // fill_cell
     // -----------------------------------------------------------------------
-    s.on("fill_cell", async ({ gameId, row, col, value, userId }) => {
+    s.on("fill_cell", async ({ gameId, row, col, value }) => {
       try {
+        const userId = s.data.user.userId;
         // Validate: single A-Z letter or empty string
         if (value !== "" && !/^[A-Za-z]$/.test(value)) {
           s.emit("error" as any, { error: "Invalid cell value" });
@@ -280,8 +282,9 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // move_cursor
     // -----------------------------------------------------------------------
-    s.on("move_cursor", async ({ gameId, row, col, userId }) => {
+    s.on("move_cursor", async ({ gameId, row, col }) => {
       try {
+        const userId = s.data.user.userId;
         await setCursor(gameId, userId, row, col);
 
         const participant = s.data.gameParticipants[gameId];
@@ -310,8 +313,9 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // leave_room
     // -----------------------------------------------------------------------
-    s.on("leave_room", async ({ gameId, userId }) => {
+    s.on("leave_room", async ({ gameId }) => {
       try {
+        const userId = s.data.user.userId;
         await s.leave(gameId);
         await removeParticipant(gameId, userId); // Redis-only: cursors + participant set
 
@@ -396,10 +400,11 @@ async function checkGameComplete(
   // All cells correctly filled — update postgres and emit game_complete
   const now = new Date().toISOString();
 
-  await pool.query(
+  const result = await pool.query(
     `UPDATE games SET status = 'complete', completed_at = now() WHERE id = $1 AND status != 'complete'`,
     [gameId]
   );
+  if (result.rowCount === 0) return;
 
   // Compute per-user stats from Redis state
   const statsMap: Record<string, number> = {};
