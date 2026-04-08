@@ -131,7 +131,8 @@ export default function GamePage() {
     const unsubJoined = ws.on("participant_joined", (payload: ParticipantJoinedPayload) => {
       setParticipants((prev) => {
         if (prev.some((p) => p.id === payload.participant.id)) return prev;
-        return [...prev, payload.participant as ParticipantWithName];
+        const participantWithName: ParticipantWithName = { ...payload.participant, displayName: payload.displayName };
+        return [...prev, participantWithName];
       });
     });
 

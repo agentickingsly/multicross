@@ -30,9 +30,11 @@ async function apiFetch<T>(
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    localStorage.removeItem("multicross_token");
-    localStorage.removeItem("multicross_user");
-    window.location.href = "/login";
+    if (!skipAuth) {
+      localStorage.removeItem("multicross_token");
+      localStorage.removeItem("multicross_user");
+      window.location.href = "/login";
+    }
     throw new Error("Unauthorized");
   }
 

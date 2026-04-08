@@ -87,6 +87,7 @@ export interface CursorMovedPayload {
 }
 export interface ParticipantJoinedPayload {
     participant: GameParticipant;
+    displayName: string;
 }
 export interface ParticipantLeftPayload {
     userId: string;

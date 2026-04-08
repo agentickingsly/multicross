@@ -108,11 +108,20 @@ router.post("/:id/join", requireAuth, async (req, res) => {
   }
 
   const existingParticipant = await pool.query(
-    "SELECT id FROM game_participants WHERE game_id = $1 AND user_id = $2",
+    "SELECT id, game_id, user_id, joined_at, color FROM game_participants WHERE game_id = $1 AND user_id = $2",
     [gameId, userId]
   );
   if (existingParticipant.rows[0]) {
-    res.status(409).json({ error: "Already joined this game" });
+    const p = existingParticipant.rows[0];
+    res.status(200).json({
+      participant: {
+        id: p.id,
+        gameId: p.game_id,
+        userId: p.user_id,
+        joinedAt: p.joined_at,
+        color: p.color,
+      },
+    });
     return;
   }
 

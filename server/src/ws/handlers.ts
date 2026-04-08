@@ -191,7 +191,12 @@ export function registerWsHandlers(io: CrosswordServer): void {
 
         // Broadcast participant_joined to everyone else in the room
         if (myParticipant) {
-          const participantJoinedPayload = { participant: myParticipant };
+          const userResult = await pool.query(
+            `SELECT display_name FROM users WHERE id = $1`,
+            [userId]
+          );
+          const displayName: string = userResult.rows[0]?.display_name ?? `Player ${userId.slice(-4)}`;
+          const participantJoinedPayload = { participant: myParticipant, displayName };
           s.to(gameId).emit("participant_joined", participantJoinedPayload);
 
           // Publish for other server instances
@@ -308,7 +313,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
     s.on("leave_room", async ({ gameId, userId }) => {
       try {
         await s.leave(gameId);
-        await removeParticipant(gameId, userId);
+        await removeParticipant(gameId, userId); // Redis-only: cursors + participant set
 
         const participantLeftPayload = { userId };
         io.to(gameId).emit("participant_left", participantLeftPayload);
