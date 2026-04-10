@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import path from "path";
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -18,7 +18,21 @@ import { registerWsHandlers } from "./ws/handlers";
 
 const app = express();
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL ?? "http://localhost:5173" }));
+
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173")
+  .split(",")
+  .map(o => o.trim());
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: "16kb" }));
 
 const authLimiter = rateLimit({
@@ -56,7 +70,7 @@ if (process.env.NODE_ENV === "production") {
 const httpServer = createServer(app);
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: { origin: process.env.CLIENT_URL ?? "http://localhost:5173" },
+  cors: { origin: allowedOrigins, credentials: true },
 });
 
 registerWsHandlers(io);
