@@ -323,7 +323,7 @@ export default function CrosswordGrid({
       const filler = filledByMap.get(key);
       if (filler) {
         const color = participantColorMap.get(filler);
-        if (color) return color + "33";
+        if (color) return color + "55";
       }
     }
     return "#fff";
@@ -452,7 +452,7 @@ export default function CrosswordGrid({
                     style={{
                       fontSize: CELL_SIZE * 0.48,
                       fontWeight: "700",
-                      color: "#111827",
+                      color: showContributions && filledByMap.get(key) && participantColorMap.has(filledByMap.get(key)!) ? "#ffffff" : "#111827",
                       fontFamily: "Georgia, serif",
                       lineHeight: 1,
                     }}
