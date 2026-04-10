@@ -5,8 +5,36 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerWsHandlers = registerWsHandlers;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const zod_1 = require("zod");
+const logger_1 = require("../logger");
 const pool_1 = __importDefault(require("../db/pool"));
 const redis_1 = require("../db/redis");
+// ---------------------------------------------------------------------------
+// Zod schemas for WS payload validation
+// ---------------------------------------------------------------------------
+const joinRoomSchema = zod_1.z.object({ gameId: zod_1.z.string().uuid() });
+const fillCellSchema = zod_1.z.object({
+    gameId: zod_1.z.string().uuid(),
+    row: zod_1.z.number().int().min(0).max(99),
+    col: zod_1.z.number().int().min(0).max(99),
+    value: zod_1.z.string().regex(/^[A-Za-z]?$/),
+});
+const moveCursorSchema = zod_1.z.object({
+    gameId: zod_1.z.string().uuid(),
+    row: zod_1.z.number().int().min(0).max(99),
+    col: zod_1.z.number().int().min(0).max(99),
+});
+const leaveRoomSchema = zod_1.z.object({ gameId: zod_1.z.string().uuid() });
+// ---------------------------------------------------------------------------
+// Whitelisted pub/sub event names
+// ---------------------------------------------------------------------------
+const ALLOWED_EVENTS = new Set([
+    "cell_updated",
+    "cursor_moved",
+    "participant_joined",
+    "participant_left",
+    "game_complete",
+]);
 // ---------------------------------------------------------------------------
 // Pub/sub state
 // ---------------------------------------------------------------------------
@@ -57,9 +85,9 @@ function subscribeToGameChannel(io, gameId) {
     subscribedChannels.add(channel);
     redis_1.sub.subscribe(channel, (err) => {
         if (err)
-            console.error(`[ws] Failed to subscribe to ${channel}:`, err);
+            logger_1.logger.error({ err }, `[ws] Failed to subscribe to ${channel}`);
         else
-            console.log(`[ws] Subscribed to ${channel}`);
+            logger_1.logger.info(`[ws] Subscribed to ${channel}`);
     });
 }
 // ---------------------------------------------------------------------------
@@ -72,8 +100,12 @@ function registerWsHandlers(io) {
         if (!token) {
             return next(new Error("Authentication required"));
         }
+        const secret = process.env.JWT_SECRET;
+        if (!secret || secret.length < 32) {
+            return next(new Error("Server misconfiguration"));
+        }
         try {
-            const payload = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
+            const payload = jsonwebtoken_1.default.verify(token, secret, { algorithms: ["HS256"] });
             socket.data = { user: payload, gameParticipants: {} };
             next();
         }
@@ -86,6 +118,8 @@ function registerWsHandlers(io) {
     redis_1.sub.on("message", (channel, message) => {
         try {
             const { event, payload, sourceSocketId } = JSON.parse(message);
+            if (!ALLOWED_EVENTS.has(event))
+                return;
             // Skip if the source socket is on this instance (already broadcast locally)
             if (io.sockets.sockets.has(sourceSocketId))
                 return;
@@ -93,18 +127,25 @@ function registerWsHandlers(io) {
             io.to(gameId).emit(event, payload);
         }
         catch (err) {
-            console.error("[ws] pub/sub relay error:", err);
+            logger_1.logger.error({ err }, "[ws] pub/sub relay error");
         }
     });
     // --- Connection ---
     io.on("connection", (socket) => {
         const s = socket;
-        console.log(`[ws] Socket connected: ${s.id} user=${s.data.user.userId}`);
+        logger_1.logger.info(`[ws] Socket connected: ${s.id} user=${s.data.user.userId}`);
         // -----------------------------------------------------------------------
         // join_room
         // -----------------------------------------------------------------------
-        s.on("join_room", async ({ gameId, userId }) => {
+        s.on("join_room", async (data) => {
+            const parsed = joinRoomSchema.safeParse(data);
+            if (!parsed.success) {
+                s.emit("error", { message: "Invalid payload" });
+                return;
+            }
+            const { gameId } = parsed.data;
             try {
+                const userId = s.data.user.userId;
                 // Verify game exists in postgres
                 const gameResult = await pool_1.default.query(`SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
            FROM games WHERE id = $1`, [gameId]);
@@ -137,7 +178,9 @@ function registerWsHandlers(io) {
                 s.emit("room_joined", { game, participants, cells });
                 // Broadcast participant_joined to everyone else in the room
                 if (myParticipant) {
-                    const participantJoinedPayload = { participant: myParticipant };
+                    const userResult = await pool_1.default.query(`SELECT display_name FROM users WHERE id = $1`, [userId]);
+                    const displayName = userResult.rows[0]?.display_name ?? `Player ${userId.slice(-4)}`;
+                    const participantJoinedPayload = { participant: myParticipant, displayName };
                     s.to(gameId).emit("participant_joined", participantJoinedPayload);
                     // Publish for other server instances
                     await redis_1.pub.publish(`channel:game:${gameId}`, JSON.stringify({
@@ -148,14 +191,26 @@ function registerWsHandlers(io) {
                 }
             }
             catch (err) {
-                console.error("[ws] join_room error:", err);
+                logger_1.logger.error({ err }, "[ws] join_room error");
             }
         });
         // -----------------------------------------------------------------------
         // fill_cell
         // -----------------------------------------------------------------------
-        s.on("fill_cell", async ({ gameId, row, col, value, userId }) => {
+        s.on("fill_cell", async (data) => {
+            const parsed = fillCellSchema.safeParse(data);
+            if (!parsed.success) {
+                s.emit("error", { message: "Invalid payload" });
+                return;
+            }
+            const { gameId, row, col, value } = parsed.data;
             try {
+                const userId = s.data.user.userId;
+                const memberCheck = await pool_1.default.query("SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2", [gameId, userId]);
+                if (!memberCheck.rows[0]) {
+                    s.emit("error", { error: "Not a participant" });
+                    return;
+                }
                 // Validate: single A-Z letter or empty string
                 if (value !== "" && !/^[A-Za-z]$/.test(value)) {
                     s.emit("error", { error: "Invalid cell value" });
@@ -194,14 +249,26 @@ function registerWsHandlers(io) {
                 }
             }
             catch (err) {
-                console.error("[ws] fill_cell error:", err);
+                logger_1.logger.error({ err }, "[ws] fill_cell error");
             }
         });
         // -----------------------------------------------------------------------
         // move_cursor
         // -----------------------------------------------------------------------
-        s.on("move_cursor", async ({ gameId, row, col, userId }) => {
+        s.on("move_cursor", async (data) => {
+            const parsed = moveCursorSchema.safeParse(data);
+            if (!parsed.success) {
+                s.emit("error", { message: "Invalid payload" });
+                return;
+            }
+            const { gameId, row, col } = parsed.data;
             try {
+                const userId = s.data.user.userId;
+                const memberCheck = await pool_1.default.query("SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2", [gameId, userId]);
+                if (!memberCheck.rows[0]) {
+                    s.emit("error", { error: "Not a participant" });
+                    return;
+                }
                 await (0, redis_1.setCursor)(gameId, userId, row, col);
                 const participant = s.data.gameParticipants[gameId];
                 const color = participant?.userId === userId ? participant.color : "#888888";
@@ -217,16 +284,28 @@ function registerWsHandlers(io) {
                 }));
             }
             catch (err) {
-                console.error("[ws] move_cursor error:", err);
+                logger_1.logger.error({ err }, "[ws] move_cursor error");
             }
         });
         // -----------------------------------------------------------------------
         // leave_room
         // -----------------------------------------------------------------------
-        s.on("leave_room", async ({ gameId, userId }) => {
+        s.on("leave_room", async (data) => {
+            const parsed = leaveRoomSchema.safeParse(data);
+            if (!parsed.success) {
+                s.emit("error", { message: "Invalid payload" });
+                return;
+            }
+            const { gameId } = parsed.data;
             try {
+                const userId = s.data.user.userId;
+                const memberCheck = await pool_1.default.query("SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2", [gameId, userId]);
+                if (!memberCheck.rows[0]) {
+                    s.emit("error", { error: "Not a participant" });
+                    return;
+                }
                 await s.leave(gameId);
-                await (0, redis_1.removeParticipant)(gameId, userId);
+                await (0, redis_1.removeParticipant)(gameId, userId); // Redis-only: cursors + participant set
                 const participantLeftPayload = { userId };
                 io.to(gameId).emit("participant_left", participantLeftPayload);
                 await redis_1.pub.publish(`channel:game:${gameId}`, JSON.stringify({
@@ -236,14 +315,14 @@ function registerWsHandlers(io) {
                 }));
             }
             catch (err) {
-                console.error("[ws] leave_room error:", err);
+                logger_1.logger.error({ err }, "[ws] leave_room error");
             }
         });
         // -----------------------------------------------------------------------
         // disconnect
         // -----------------------------------------------------------------------
         s.on("disconnect", async () => {
-            console.log(`[ws] Socket disconnected: ${s.id}`);
+            logger_1.logger.info(`[ws] Socket disconnected: ${s.id}`);
             const userId = s.data?.user?.userId;
             if (!userId)
                 return;
@@ -262,7 +341,7 @@ function registerWsHandlers(io) {
                     }));
                 }
                 catch (err) {
-                    console.error(`[ws] disconnect cleanup error for game ${gameId}:`, err);
+                    logger_1.logger.error({ err }, `[ws] disconnect cleanup error for game ${gameId}`);
                 }
             }
         });
@@ -295,7 +374,9 @@ async function checkGameComplete(io, gameId, grid) {
     }
     // All cells correctly filled — update postgres and emit game_complete
     const now = new Date().toISOString();
-    await pool_1.default.query(`UPDATE games SET status = 'complete', completed_at = now() WHERE id = $1 AND status != 'complete'`, [gameId]);
+    const result = await pool_1.default.query(`UPDATE games SET status = 'complete', completed_at = now() WHERE id = $1 AND status != 'complete'`, [gameId]);
+    if (result.rowCount === 0)
+        return;
     // Compute per-user stats from Redis state
     const statsMap = {};
     for (const json of Object.values(stateHash)) {

@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import type { Server, Socket } from "socket.io";
 import type { ClientToServerEvents, ServerToClientEvents, GameParticipant, GameCell } from "@multicross/shared";
+import { logger } from "../logger";
 import pool from "../db/pool";
 import {
   pub,
@@ -120,8 +121,8 @@ function subscribeToGameChannel(io: CrosswordServer, gameId: string) {
   if (subscribedChannels.has(channel)) return;
   subscribedChannels.add(channel);
   sub.subscribe(channel, (err) => {
-    if (err) console.error(`[ws] Failed to subscribe to ${channel}:`, err);
-    else console.log(`[ws] Subscribed to ${channel}`);
+    if (err) logger.error({ err }, `[ws] Failed to subscribe to ${channel}`);
+    else logger.info(`[ws] Subscribed to ${channel}`);
   });
 }
 
@@ -165,14 +166,14 @@ export function registerWsHandlers(io: CrosswordServer): void {
       const gameId = channel.replace("channel:game:", "");
       (io.to(gameId) as any).emit(event, payload);
     } catch (err) {
-      console.error("[ws] pub/sub relay error:", err);
+      logger.error({ err }, "[ws] pub/sub relay error");
     }
   });
 
   // --- Connection ---
   io.on("connection", (socket) => {
     const s = socket as CrosswordSocket;
-    console.log(`[ws] Socket connected: ${s.id} user=${s.data.user.userId}`);
+    logger.info(`[ws] Socket connected: ${s.id} user=${s.data.user.userId}`);
 
     // -----------------------------------------------------------------------
     // join_room
@@ -250,7 +251,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
           );
         }
       } catch (err) {
-        console.error("[ws] join_room error:", err);
+        logger.error({ err }, "[ws] join_room error");
       }
     });
 
@@ -325,7 +326,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
           await checkGameComplete(io, gameId, grid);
         }
       } catch (err) {
-        console.error("[ws] fill_cell error:", err);
+        logger.error({ err }, "[ws] fill_cell error");
       }
     });
 
@@ -367,7 +368,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
           })
         );
       } catch (err) {
-        console.error("[ws] move_cursor error:", err);
+        logger.error({ err }, "[ws] move_cursor error");
       }
     });
 
@@ -403,7 +404,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
           })
         );
       } catch (err) {
-        console.error("[ws] leave_room error:", err);
+        logger.error({ err }, "[ws] leave_room error");
       }
     });
 
@@ -411,7 +412,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // disconnect
     // -----------------------------------------------------------------------
     s.on("disconnect", async () => {
-      console.log(`[ws] Socket disconnected: ${s.id}`);
+      logger.info(`[ws] Socket disconnected: ${s.id}`);
       const userId = s.data?.user?.userId;
       if (!userId) return;
 
@@ -432,7 +433,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
             })
           );
         } catch (err) {
-          console.error(`[ws] disconnect cleanup error for game ${gameId}:`, err);
+          logger.error({ err }, `[ws] disconnect cleanup error for game ${gameId}`);
         }
       }
     });

@@ -9,6 +9,8 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import type { ClientToServerEvents, ServerToClientEvents } from "@multicross/shared";
 
+import { logger } from "./logger";
+import pool from "./db/pool";
 import authRouter from "./routes/auth";
 import puzzlesRouter from "./routes/puzzles";
 import gamesRouter from "./routes/games";
@@ -27,10 +29,29 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+app.get("/health", async (_req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: "error", message: "Database unavailable" });
+  }
+});
+
 app.use("/api/auth", authLimiter);
 app.use("/api/auth", authRouter);
 app.use("/api/puzzles", puzzlesRouter);
 app.use("/api/games", gamesRouter);
+
+if (process.env.NODE_ENV === "production") {
+  const clientDist = path.join(__dirname, "../../client/dist");
+  app.use(express.static(clientDist));
+  app.get("*", (req, res) => {
+    if (!req.path.startsWith("/api") && !req.path.startsWith("/socket.io")) {
+      res.sendFile(path.join(clientDist, "index.html"));
+    }
+  });
+}
 
 const httpServer = createServer(app);
 
@@ -42,17 +63,17 @@ registerWsHandlers(io);
 
 // Global error handler
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err);
+  logger.error(err);
   res.status(500).json({ error: "Internal server error" });
 });
 
 const secret = process.env.JWT_SECRET;
 if (!secret || secret.length < 32) {
-  console.error("FATAL: JWT_SECRET must be at least 32 characters");
+  logger.error("FATAL: JWT_SECRET must be at least 32 characters");
   process.exit(1);
 }
 
 const PORT = process.env.PORT ?? 3001;
 httpServer.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  logger.info(`Server listening on port ${PORT}`);
 });

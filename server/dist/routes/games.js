@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const zod_1 = require("zod");
+const crypto_1 = require("crypto");
 const pool_1 = __importDefault(require("../db/pool"));
 const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
@@ -13,12 +14,9 @@ const COLORS = [
     "#9b59b6", "#1abc9c", "#e67e22", "#e91e63",
 ];
 function generateRoomCode() {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let code = "";
-    for (let i = 0; i < 6; i++) {
-        code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return code;
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = (0, crypto_1.randomBytes)(6);
+    return Array.from(bytes).map(b => chars[b % chars.length]).join("");
 }
 // POST /api/games
 router.post("/", auth_1.requireAuth, async (req, res) => {
@@ -79,83 +77,135 @@ router.post("/", auth_1.requireAuth, async (req, res) => {
     }
 });
 // POST /api/games/:id/join
-router.post("/:id/join", auth_1.requireAuth, async (req, res) => {
-    const gameId = req.params.id;
-    const userId = req.user.userId;
-    const gameResult = await pool_1.default.query(`SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
-     FROM games WHERE id = $1`, [gameId]);
-    if (!gameResult.rows[0]) {
-        res.status(404).json({ error: "Game not found" });
-        return;
+router.post("/:id/join", auth_1.requireAuth, async (req, res, next) => {
+    try {
+        const gameId = req.params.id;
+        const userId = req.user.userId;
+        const gameResult = await pool_1.default.query(`SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
+       FROM games WHERE id = $1`, [gameId]);
+        if (!gameResult.rows[0]) {
+            res.status(404).json({ error: "Game not found" });
+            return;
+        }
+        const g = gameResult.rows[0];
+        if (g.status === "complete") {
+            res.status(400).json({ error: "Game is already complete" });
+            return;
+        }
+        const existingParticipant = await pool_1.default.query("SELECT id, game_id, user_id, joined_at, color FROM game_participants WHERE game_id = $1 AND user_id = $2", [gameId, userId]);
+        if (existingParticipant.rows[0]) {
+            const p = existingParticipant.rows[0];
+            res.status(200).json({
+                participant: {
+                    id: p.id,
+                    gameId: p.game_id,
+                    userId: p.user_id,
+                    joinedAt: p.joined_at,
+                    color: p.color,
+                },
+            });
+            return;
+        }
+        // Pick a color not already used
+        const usedColors = await pool_1.default.query("SELECT color FROM game_participants WHERE game_id = $1", [gameId]);
+        const usedSet = new Set(usedColors.rows.map((r) => r.color));
+        const color = COLORS.find((c) => !usedSet.has(c)) ?? COLORS[usedColors.rows.length % COLORS.length];
+        const participantResult = await pool_1.default.query(`INSERT INTO game_participants (game_id, user_id, color)
+       VALUES ($1, $2, $3)
+       RETURNING id, game_id, user_id, joined_at, color`, [gameId, userId, color]);
+        const p = participantResult.rows[0];
+        res.status(201).json({
+            participant: {
+                id: p.id,
+                gameId: p.game_id,
+                userId: p.user_id,
+                joinedAt: p.joined_at,
+                color: p.color,
+            },
+        });
     }
-    const g = gameResult.rows[0];
-    if (g.status !== "waiting") {
-        res.status(400).json({ error: "Game is not in waiting status" });
-        return;
+    catch (err) {
+        next(err);
     }
-    const existingParticipant = await pool_1.default.query("SELECT id FROM game_participants WHERE game_id = $1 AND user_id = $2", [gameId, userId]);
-    if (existingParticipant.rows[0]) {
-        res.status(409).json({ error: "Already joined this game" });
-        return;
-    }
-    // Pick a color not already used
-    const usedColors = await pool_1.default.query("SELECT color FROM game_participants WHERE game_id = $1", [gameId]);
-    const usedSet = new Set(usedColors.rows.map((r) => r.color));
-    const color = COLORS.find((c) => !usedSet.has(c)) ?? COLORS[usedColors.rows.length % COLORS.length];
-    const participantResult = await pool_1.default.query(`INSERT INTO game_participants (game_id, user_id, color)
-     VALUES ($1, $2, $3)
-     RETURNING id, game_id, user_id, joined_at, color`, [gameId, userId, color]);
-    const p = participantResult.rows[0];
-    res.status(201).json({
-        participant: {
-            id: p.id,
-            gameId: p.game_id,
-            userId: p.user_id,
-            joinedAt: p.joined_at,
-            color: p.color,
-        },
-    });
 });
-// GET /api/games/:id
-router.get("/:id", auth_1.requireAuth, async (req, res) => {
-    const gameId = req.params.id;
-    const gameResult = await pool_1.default.query(`SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
-     FROM games WHERE id = $1`, [gameId]);
-    if (!gameResult.rows[0]) {
-        res.status(404).json({ error: "Game not found" });
-        return;
+// GET /api/games?roomCode=
+router.get("/", auth_1.requireAuth, async (req, res, next) => {
+    try {
+        const { roomCode } = req.query;
+        if (!roomCode) {
+            res.status(400).json({ error: "roomCode required" });
+            return;
+        }
+        const result = await pool_1.default.query(`SELECT id FROM games WHERE room_code = $1`, [String(roomCode).toUpperCase()]);
+        if (!result.rows[0]) {
+            res.status(404).json({ error: "Game not found" });
+            return;
+        }
+        const gameId = result.rows[0].id;
+        const membership = await pool_1.default.query("SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2", [gameId, req.user.userId]);
+        if (!membership.rows[0]) {
+            res.status(404).json({ error: "Game not found" });
+            return;
+        }
+        res.json({ game: { id: gameId } });
     }
-    const g = gameResult.rows[0];
-    const participantsResult = await pool_1.default.query(`SELECT id, game_id, user_id, joined_at, color FROM game_participants WHERE game_id = $1`, [gameId]);
-    const cellsResult = await pool_1.default.query(`SELECT id, game_id, row, col, value, filled_by, filled_at FROM game_cells WHERE game_id = $1`, [gameId]);
-    res.json({
-        game: {
-            id: g.id,
-            puzzleId: g.puzzle_id,
-            roomCode: g.room_code,
-            status: g.status,
-            createdBy: g.created_by,
-            startedAt: g.started_at,
-            completedAt: g.completed_at,
-            createdAt: g.created_at,
-        },
-        participants: participantsResult.rows.map((p) => ({
-            id: p.id,
-            gameId: p.game_id,
-            userId: p.user_id,
-            joinedAt: p.joined_at,
-            color: p.color,
-        })),
-        cells: cellsResult.rows.map((c) => ({
-            id: c.id,
-            gameId: c.game_id,
-            row: c.row,
-            col: c.col,
-            value: c.value,
-            filledBy: c.filled_by,
-            filledAt: c.filled_at,
-        })),
-    });
+    catch (err) {
+        next(err);
+    }
+});
+router.get("/:id", auth_1.requireAuth, async (req, res, next) => {
+    try {
+        const gameId = req.params.id;
+        const gameResult = await pool_1.default.query(`SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
+       FROM games WHERE id = $1`, [gameId]);
+        if (!gameResult.rows[0]) {
+            res.status(404).json({ error: "Game not found" });
+            return;
+        }
+        const g = gameResult.rows[0];
+        const membership = await pool_1.default.query("SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2", [gameId, req.user.userId]);
+        if (!membership.rows[0]) {
+            res.status(404).json({ error: "Game not found" });
+            return;
+        }
+        const participantsResult = await pool_1.default.query(`SELECT gp.id, gp.game_id, gp.user_id, gp.joined_at, gp.color, u.display_name
+       FROM game_participants gp
+       JOIN users u ON u.id = gp.user_id
+       WHERE gp.game_id = $1`, [gameId]);
+        const cellsResult = await pool_1.default.query(`SELECT id, game_id, row, col, value, filled_by, filled_at FROM game_cells WHERE game_id = $1`, [gameId]);
+        res.json({
+            game: {
+                id: g.id,
+                puzzleId: g.puzzle_id,
+                roomCode: g.room_code,
+                status: g.status,
+                createdBy: g.created_by,
+                startedAt: g.started_at,
+                completedAt: g.completed_at,
+                createdAt: g.created_at,
+            },
+            participants: participantsResult.rows.map((p) => ({
+                id: p.id,
+                gameId: p.game_id,
+                userId: p.user_id,
+                joinedAt: p.joined_at,
+                color: p.color,
+                displayName: p.display_name,
+            })),
+            cells: cellsResult.rows.map((c) => ({
+                id: c.id,
+                gameId: c.game_id,
+                row: c.row,
+                col: c.col,
+                value: c.value,
+                filledBy: c.filled_by,
+                filledAt: c.filled_at,
+            })),
+        });
+    }
+    catch (err) {
+        next(err);
+    }
 });
 exports.default = router;
 //# sourceMappingURL=games.js.map

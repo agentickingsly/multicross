@@ -13,7 +13,7 @@ function requireAuth(req, res, next) {
     }
     const token = header.slice(7);
     try {
-        const payload = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
+        const payload = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
         req.user = payload;
         next();
     }
