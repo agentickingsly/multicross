@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { randomBytes } from "crypto";
 import pool from "../db/pool";
 import { requireAuth } from "../middleware/auth";
 
@@ -11,12 +12,9 @@ const COLORS = [
 ];
 
 function generateRoomCode(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(6);
+  return Array.from(bytes).map(b => chars[b % chars.length]).join("");
 }
 
 // POST /api/games
@@ -155,7 +153,7 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
   }
 });
 
-// GET /api/games/:id
+// GET /api/games?roomCode=
 router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { roomCode } = req.query;
@@ -164,7 +162,13 @@ router.get("/", requireAuth, async (req, res, next) => {
       `SELECT id FROM games WHERE room_code = $1`, [String(roomCode).toUpperCase()]
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Game not found" }); return; }
-    res.json({ game: { id: result.rows[0].id } });
+    const gameId = result.rows[0].id;
+    const membership = await pool.query(
+      "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+      [gameId, req.user!.userId]
+    );
+    if (!membership.rows[0]) { res.status(404).json({ error: "Game not found" }); return; }
+    res.json({ game: { id: gameId } });
   } catch (err) {
     next(err);
   }
@@ -184,6 +188,15 @@ router.get("/:id", requireAuth, async (req, res, next) => {
       return;
     }
     const g = gameResult.rows[0];
+
+    const membership = await pool.query(
+      "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+      [gameId, req.user!.userId]
+    );
+    if (!membership.rows[0]) {
+      res.status(404).json({ error: "Game not found" });
+      return;
+    }
 
     const participantsResult = await pool.query(
       `SELECT gp.id, gp.game_id, gp.user_id, gp.joined_at, gp.color, u.display_name

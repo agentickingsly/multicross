@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { z } from "zod";
 import type { Server, Socket } from "socket.io";
 import type { ClientToServerEvents, ServerToClientEvents, GameParticipant, GameCell } from "@multicross/shared";
 import pool from "../db/pool";
@@ -13,6 +14,36 @@ import {
   removeParticipant,
   deleteGameKeys,
 } from "../db/redis";
+
+// ---------------------------------------------------------------------------
+// Zod schemas for WS payload validation
+// ---------------------------------------------------------------------------
+
+const joinRoomSchema = z.object({ gameId: z.string().uuid() });
+const fillCellSchema = z.object({
+  gameId: z.string().uuid(),
+  row: z.number().int().min(0).max(99),
+  col: z.number().int().min(0).max(99),
+  value: z.string().regex(/^[A-Za-z]?$/),
+});
+const moveCursorSchema = z.object({
+  gameId: z.string().uuid(),
+  row: z.number().int().min(0).max(99),
+  col: z.number().int().min(0).max(99),
+});
+const leaveRoomSchema = z.object({ gameId: z.string().uuid() });
+
+// ---------------------------------------------------------------------------
+// Whitelisted pub/sub event names
+// ---------------------------------------------------------------------------
+
+const ALLOWED_EVENTS = new Set([
+  "cell_updated",
+  "cursor_moved",
+  "participant_joined",
+  "participant_left",
+  "game_complete",
+]);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,8 +136,12 @@ export function registerWsHandlers(io: CrosswordServer): void {
     if (!token) {
       return next(new Error("Authentication required"));
     }
+    const secret = process.env.JWT_SECRET;
+    if (!secret || secret.length < 32) {
+      return next(new Error("Server misconfiguration"));
+    }
     try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
+      const payload = jwt.verify(token, secret, { algorithms: ["HS256"] }) as JwtPayload;
       socket.data = { user: payload, gameParticipants: {} };
       next();
     } catch {
@@ -123,6 +158,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
         payload: unknown;
         sourceSocketId: string;
       };
+      if (!ALLOWED_EVENTS.has(event)) return;
       // Skip if the source socket is on this instance (already broadcast locally)
       if ((io.sockets.sockets as Map<string, any>).has(sourceSocketId)) return;
 
@@ -141,7 +177,10 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // join_room
     // -----------------------------------------------------------------------
-    s.on("join_room", async ({ gameId }) => {
+    s.on("join_room", async (data) => {
+      const parsed = joinRoomSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { gameId } = parsed.data;
       try {
         const userId = s.data.user.userId;
         // Verify game exists in postgres
@@ -218,9 +257,20 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // fill_cell
     // -----------------------------------------------------------------------
-    s.on("fill_cell", async ({ gameId, row, col, value }) => {
+    s.on("fill_cell", async (data) => {
+      const parsed = fillCellSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { gameId, row, col, value } = parsed.data;
       try {
         const userId = s.data.user.userId;
+        const memberCheck = await pool.query(
+          "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+          [gameId, userId]
+        );
+        if (!memberCheck.rows[0]) {
+          s.emit("error" as any, { error: "Not a participant" });
+          return;
+        }
         // Validate: single A-Z letter or empty string
         if (value !== "" && !/^[A-Za-z]$/.test(value)) {
           s.emit("error" as any, { error: "Invalid cell value" });
@@ -282,9 +332,20 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // move_cursor
     // -----------------------------------------------------------------------
-    s.on("move_cursor", async ({ gameId, row, col }) => {
+    s.on("move_cursor", async (data) => {
+      const parsed = moveCursorSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { gameId, row, col } = parsed.data;
       try {
         const userId = s.data.user.userId;
+        const memberCheck = await pool.query(
+          "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+          [gameId, userId]
+        );
+        if (!memberCheck.rows[0]) {
+          s.emit("error" as any, { error: "Not a participant" });
+          return;
+        }
         await setCursor(gameId, userId, row, col);
 
         const participant = s.data.gameParticipants[gameId];
@@ -313,9 +374,20 @@ export function registerWsHandlers(io: CrosswordServer): void {
     // -----------------------------------------------------------------------
     // leave_room
     // -----------------------------------------------------------------------
-    s.on("leave_room", async ({ gameId }) => {
+    s.on("leave_room", async (data) => {
+      const parsed = leaveRoomSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { gameId } = parsed.data;
       try {
         const userId = s.data.user.userId;
+        const memberCheck = await pool.query(
+          "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+          [gameId, userId]
+        );
+        if (!memberCheck.rows[0]) {
+          s.emit("error" as any, { error: "Not a participant" });
+          return;
+        }
         await s.leave(gameId);
         await removeParticipant(gameId, userId); // Redis-only: cursors + participant set
 
