@@ -162,13 +162,7 @@ router.get("/", requireAuth, async (req, res, next) => {
       `SELECT id FROM games WHERE room_code = $1`, [String(roomCode).toUpperCase()]
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Game not found" }); return; }
-    const gameId = result.rows[0].id;
-    const membership = await pool.query(
-      "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
-      [gameId, req.user!.userId]
-    );
-    if (!membership.rows[0]) { res.status(404).json({ error: "Game not found" }); return; }
-    res.json({ game: { id: gameId } });
+    res.json({ game: { id: result.rows[0].id } });
   } catch (err) {
     next(err);
   }
