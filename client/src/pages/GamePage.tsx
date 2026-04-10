@@ -52,6 +52,7 @@ export default function GamePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showContributions, setShowContributions] = useState(false);
   const startTimeRef = useRef<number>(Date.now());
 
   // Load game + puzzle
@@ -244,6 +245,16 @@ export default function GamePage() {
       fontSize: "0.75rem",
       transition: "background 0.2s",
     },
+    contribBtn: {
+      background: showContributions ? "rgba(255,255,255,0.25)" : "none",
+      color: "#fff",
+      border: "1px solid rgba(255,255,255,0.4)",
+      borderRadius: "6px",
+      padding: "0.3rem 0.6rem",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s",
+    },
     content: {
       maxWidth: "980px",
       margin: "0 auto",
@@ -373,6 +384,9 @@ export default function GamePage() {
           <button style={s.copyBtn} onClick={handleCopyRoomCode}>
             {copied ? "Copied!" : "Copy"}
           </button>
+          <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
+            {showContributions ? "Hide contributions" : "Show contributions"}
+          </button>
         </div>
       </header>
 
@@ -384,9 +398,21 @@ export default function GamePage() {
             participants={participants}
             currentUserId={currentUser?.id ?? ""}
             cursors={cursors}
+            showContributions={showContributions}
             onCellFill={handleCellFill}
             onCursorMove={handleCursorMove}
           />
+
+          {showContributions && (
+            <div style={{ marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+              {participants.map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "#374151" }}>
+                  <div style={{ width: "12px", height: "12px", borderRadius: "3px", background: p.color, flexShrink: 0 }} />
+                  <span>{getDisplayName(p)}{p.userId === currentUser?.id && " (you)"}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={s.sidebar}>

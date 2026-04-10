@@ -12,6 +12,7 @@ interface Props {
   participants: GameParticipant[];
   currentUserId: string;
   cursors?: Record<string, CursorPos>; // userId → position
+  showContributions?: boolean;
   onCellFill: (row: number, col: number, value: string) => void;
   onCursorMove: (row: number, col: number) => void;
 }
@@ -103,6 +104,7 @@ export default function CrosswordGrid({
   participants,
   currentUserId,
   cursors = {},
+  showContributions = false,
   onCellFill,
   onCursorMove,
 }: Props) {
@@ -136,6 +138,20 @@ export default function CrosswordGrid({
     }
     return map;
   }, [cells]);
+
+  const filledByMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const cell of cells) {
+      if (cell.filledBy) map.set(`${cell.row},${cell.col}`, cell.filledBy);
+    }
+    return map;
+  }, [cells]);
+
+  const participantColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    participants.forEach(p => map.set(p.userId, p.color));
+    return map;
+  }, [participants]);
 
   // ── Navigation helpers ──────────────────────────────────────────────────────
 
@@ -303,6 +319,13 @@ export default function CrosswordGrid({
     if (isSelected) return "#93c5fd"; // blue-300
     if (isCorrect) return "#bbf7d0"; // green-200
     if (isHighlighted) return "#dbeafe"; // blue-100
+    if (showContributions && value) {
+      const filler = filledByMap.get(key);
+      if (filler) {
+        const color = participantColorMap.get(filler);
+        if (color) return color + "33";
+      }
+    }
     return "#fff";
   }
 
