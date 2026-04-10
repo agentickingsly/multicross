@@ -306,6 +306,8 @@ export default function CrosswordGrid({
     });
   }
 
+  const myColor = participants.find(p => p.userId === currentUserId)?.color ?? "#1d4ed8";
+
   // ── Cell background logic ───────────────────────────────────────────────────
 
   function cellBackground(row: number, col: number): string {
@@ -316,14 +318,14 @@ export default function CrosswordGrid({
     const value = cellValueMap.get(key);
     const isCorrect = value && value.toUpperCase() === grid[row][col]?.toUpperCase();
 
-    if (isSelected) return "#93c5fd"; // blue-300
+    if (isSelected) return myColor + "88";
     if (isCorrect) return "#bbf7d0"; // green-200
     if (isHighlighted) return "#dbeafe"; // blue-100
     if (showContributions && value) {
       const filler = filledByMap.get(key);
       if (filler) {
         const color = participantColorMap.get(filler);
-        if (color) return color + "55";
+        if (color) return color + "88";
       }
     }
     return "#fff";
@@ -425,7 +427,7 @@ export default function CrosswordGrid({
                   border: participantHere
                     ? `3px solid ${participantHere.color}`
                     : isCurrentUserHere
-                    ? "3px solid #1d4ed8"
+                    ? `3px solid ${myColor}99`
                     : "none",
                   borderRadius: "2px",
                 }}
@@ -438,7 +440,7 @@ export default function CrosswordGrid({
                       left: 2,
                       fontSize: Math.max(8, CELL_SIZE * 0.22),
                       lineHeight: 1,
-                      color: "#374151",
+                      color: showContributions && filledByMap.get(key) && participantColorMap.has(filledByMap.get(key)!) ? "#ffffff" : "#374151",
                       fontFamily: "system-ui, sans-serif",
                       fontWeight: "600",
                       pointerEvents: "none",
