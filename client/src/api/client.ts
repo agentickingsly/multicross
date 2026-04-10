@@ -59,11 +59,12 @@ export function login(email: string, password: string): Promise<LoginResponse> {
 export function register(
   email: string,
   displayName: string,
-  password: string
+  password: string,
+  inviteCode: string
 ): Promise<RegisterResponse> {
   return apiFetch<RegisterResponse>(
     "/auth/register",
-    { method: "POST", body: JSON.stringify({ email, displayName, password }) },
+    { method: "POST", body: JSON.stringify({ email, displayName, password, inviteCode }) },
     true
   );
 }

@@ -1,0 +1,17 @@
+[Unit]
+Description=Multicross multiplayer crossword server
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/multicross
+ExecStart=/usr/bin/node server/dist/index.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

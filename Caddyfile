@@ -1,0 +1,23 @@
+# Replace "your-domain.com" with your actual domain name.
+# Caddy will automatically provision and renew a TLS certificate via Let's Encrypt.
+
+your-domain.com {
+  # Reverse proxy API and WebSocket to Node server
+  handle /api/* {
+    reverse_proxy localhost:3001
+  }
+
+  handle /socket.io/* {
+    reverse_proxy localhost:3001 {
+      header_up Upgrade {http.request.header.Upgrade}
+      header_up Connection {http.request.header.Connection}
+    }
+  }
+
+  # Serve frontend static files
+  handle {
+    root * /var/www/multicross/client/dist
+    file_server
+    try_files {path} /index.html
+  }
+}

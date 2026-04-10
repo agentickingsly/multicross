@@ -73,6 +73,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -89,7 +90,7 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      const { user, token } = await register(email, displayName, password);
+      const { user, token } = await register(email, displayName, password, inviteCode);
       localStorage.setItem("multicross_token", token);
       localStorage.setItem("multicross_user", JSON.stringify(user));
       navigate("/lobby");
@@ -97,6 +98,8 @@ export default function RegisterPage() {
       const msg = err instanceof Error ? err.message : "";
       if (msg === "Failed to fetch" || msg.toLowerCase().includes("connect")) {
         setError("Could not connect to server — is it running?");
+      } else if (msg.toLowerCase().includes("invite")) {
+        setError("Invalid invite code — please check with the app owner");
       } else if (msg.toLowerCase().includes("email") || msg.toLowerCase().includes("exists") || msg.toLowerCase().includes("duplicate")) {
         setError("An account with this email already exists");
       } else {
@@ -146,6 +149,17 @@ export default function RegisterPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="min. 6 characters"
+          />
+        </label>
+
+        <label style={s.label}>
+          Invite code
+          <input
+            style={s.input}
+            type="text"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            placeholder="Enter your invite code"
           />
         </label>
 

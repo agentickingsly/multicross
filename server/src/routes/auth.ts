@@ -10,6 +10,7 @@ const registerSchema = z.object({
   email: z.string().email(),
   displayName: z.string().min(1).max(30),
   password: z.string().min(8),
+  inviteCode: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -19,6 +20,14 @@ const loginSchema = z.object({
 
 // POST /api/auth/register
 router.post("/register", async (req, res) => {
+  const INVITE_CODE = process.env.INVITE_CODE;
+  if (INVITE_CODE) {
+    const { inviteCode } = req.body;
+    if (!inviteCode || inviteCode !== INVITE_CODE) {
+      return res.status(403).json({ error: "Invalid invite code" });
+    }
+  }
+
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.errors[0].message });
