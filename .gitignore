@@ -1,23 +1,27 @@
 # Dependencies
 node_modules/
 
+# Build output
+server/dist/
+client/dist/
+
 # Environment files
 .env
-client/.env
 server/.env
-
-# Build output
-dist/
-build/
+client/.env
 
 # Logs
 *.log
+logs/
 /tmp/
 
 # OS files
 .DS_Store
 Thumbs.db
 
+# Vim swap files
+*.swp
+*.swo
+
 # TypeScript build info
 *.tsbuildinfo
-*.swp
