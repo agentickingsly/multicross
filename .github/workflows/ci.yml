@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: install dependencies
+        run: npm install
+
+      - name: type check shared
+        run: cd shared && npx tsc --noEmit
+
+      - name: type check server
+        run: cd server && npx tsc --noEmit
+
+      - name: type check client
+        run: cd client && npx tsc --noEmit

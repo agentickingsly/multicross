@@ -1,5 +1,7 @@
 # Multicross
 
+[![CI](https://github.com/agentickingsly/multicross/actions/workflows/ci.yml/badge.svg)](https://github.com/agentickingsly/multicross/actions/workflows/ci.yml)
+
 Multiplayer crossword app. Solve puzzles together in real time.
 
 ## Prerequisites
