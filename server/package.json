@@ -7,7 +7,9 @@
     "build": "tsc --project tsconfig.json --outDir dist",
     "start": "node dist/index.js",
     "seed": "ts-node src/scripts/seed.ts",
-    "migrate": "ts-node --project tsconfig.json src/db/migrate.ts"
+    "migrate": "ts-node --project tsconfig.json src/db/migrate.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@multicross/shared": "*",
@@ -32,7 +34,10 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.11.5",
     "@types/pg": "^8.10.9",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^2.1.9"
   }
 }

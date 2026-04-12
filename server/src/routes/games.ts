@@ -11,7 +11,7 @@ const COLORS = [
   "#9b59b6", "#1abc9c", "#e67e22", "#e91e63",
 ];
 
-function generateRoomCode(): string {
+export function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = randomBytes(6);
   return Array.from(bytes).map(b => chars[b % chars.length]).join("");
@@ -111,16 +111,7 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
       [gameId, userId]
     );
     if (existingParticipant.rows[0]) {
-      const p = existingParticipant.rows[0];
-      res.status(200).json({
-        participant: {
-          id: p.id,
-          gameId: p.game_id,
-          userId: p.user_id,
-          joinedAt: p.joined_at,
-          color: p.color,
-        },
-      });
+      res.status(409).json({ error: "Already joined this game" });
       return;
     }
 
@@ -139,7 +130,7 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
       [gameId, userId, color]
     );
     const p = participantResult.rows[0];
-    res.status(201).json({
+    res.status(200).json({
       participant: {
         id: p.id,
         gameId: p.game_id,

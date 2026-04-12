@@ -52,7 +52,9 @@ app.get("/health", async (_req, res) => {
   }
 });
 
-app.use("/api/auth", authLimiter);
+if (process.env.NODE_ENV !== "test") {
+  app.use("/api/auth", authLimiter);
+}
 app.use("/api/auth", authRouter);
 app.use("/api/puzzles", puzzlesRouter);
 app.use("/api/games", gamesRouter);
@@ -67,19 +69,13 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-const httpServer = createServer(app);
-
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: { origin: allowedOrigins, credentials: true },
-});
-
-registerWsHandlers(io);
-
 // Global error handler
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   logger.error(err);
   res.status(500).json({ error: "Internal server error" });
 });
+
+export { app };
 
 const secret = process.env.JWT_SECRET;
 if (!secret || secret.length < 32) {
@@ -87,7 +83,15 @@ if (!secret || secret.length < 32) {
   process.exit(1);
 }
 
-const PORT = process.env.PORT ?? 3001;
-httpServer.listen(PORT, () => {
-  logger.info(`Server listening on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  const httpServer = createServer(app);
+  const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+    cors: { origin: allowedOrigins, credentials: true },
+  });
+  registerWsHandlers(io);
+
+  const PORT = process.env.PORT ?? 3001;
+  httpServer.listen(PORT, () => {
+    logger.info(`Server listening on port ${PORT}`);
+  });
+}

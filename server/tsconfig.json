@@ -12,6 +12,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "types": ["vitest/globals", "node"],
     "paths": {
       "@multicross/shared": ["../shared/dist/types"]
     }

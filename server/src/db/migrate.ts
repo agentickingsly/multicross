@@ -1,10 +1,10 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 import pool from "./pool";
 import fs from "fs";
-import path from "path";
 
-async function migrate() {
-  // Create migrations tracking table if it doesn't exist
+export async function runMigrations(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id SERIAL PRIMARY KEY,
@@ -33,9 +33,16 @@ async function migrate() {
     );
     console.log(`Applied ${file}`);
   }
-
-  await pool.end();
-  console.log("Migrations complete");
 }
 
-migrate().catch(err => { console.error(err); process.exit(1); });
+if (require.main === module) {
+  runMigrations()
+    .then(() => {
+      console.log("Migrations complete");
+      return pool.end();
+    })
+    .catch(err => {
+      console.error(err);
+      process.exit(1);
+    });
+}

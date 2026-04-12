@@ -10,6 +10,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crossword_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -30,3 +45,10 @@ jobs:
 
       - name: type check client
         run: cd client && npx tsc --noEmit
+
+      - name: run server tests
+        run: npm run test --workspace=server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crossword_test
+          JWT_SECRET: test-secret-at-least-32-characters-long
+          NODE_ENV: test
