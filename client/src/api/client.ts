@@ -79,6 +79,38 @@ export function getPuzzle(id: string): Promise<GetPuzzleResponse> {
   return apiFetch<GetPuzzleResponse>(`/puzzles/${id}`);
 }
 
+export function getMyPuzzles(): Promise<ListPuzzlesResponse> {
+  return apiFetch<ListPuzzlesResponse>("/puzzles/mine");
+}
+
+interface PuzzlePayload {
+  title: string;
+  author: string;
+  width: number;
+  height: number;
+  grid: (string | null)[][];
+  clues: { across: Record<string, string>; down: Record<string, string> };
+  status: "draft" | "published";
+}
+
+export function createPuzzle(data: PuzzlePayload): Promise<GetPuzzleResponse> {
+  return apiFetch<GetPuzzleResponse>("/puzzles", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updatePuzzle(id: string, data: PuzzlePayload): Promise<GetPuzzleResponse> {
+  return apiFetch<GetPuzzleResponse>(`/puzzles/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deletePuzzle(id: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/puzzles/${id}`, { method: "DELETE" });
+}
+
 // ─── Games ────────────────────────────────────────────────────────────────────
 
 export function getGame(gameId: string): Promise<GetGameResponse> {

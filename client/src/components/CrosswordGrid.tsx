@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Puzzle, GameCell, GameParticipant } from "@multicross/shared";
+import { computeCellNumbers } from "../utils/crosswordUtils";
 
 interface CursorPos {
   row: number;
@@ -25,33 +26,7 @@ interface ClueEntry {
   cells: [number, number][];
 }
 
-// ─── Cell numbering algorithm ─────────────────────────────────────────────────
-
-function computeCellNumbers(
-  grid: (string | null)[][],
-  height: number,
-  width: number
-): Map<string, number> {
-  const nums = new Map<string, number>();
-  let n = 1;
-  for (let r = 0; r < height; r++) {
-    for (let c = 0; c < width; c++) {
-      if (grid[r][c] === null) continue;
-      const acrossStart =
-        (c === 0 || grid[r][c - 1] === null) &&
-        c + 1 < width &&
-        grid[r][c + 1] !== null;
-      const downStart =
-        (r === 0 || grid[r - 1][c] === null) &&
-        r + 1 < height &&
-        grid[r + 1][c] !== null;
-      if (acrossStart || downStart) {
-        nums.set(`${r},${c}`, n++);
-      }
-    }
-  }
-  return nums;
-}
+// ─── Clue builder ─────────────────────────────────────────────────────────────
 
 function buildClues(
   puzzle: Puzzle,

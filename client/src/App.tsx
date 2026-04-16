@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import LobbyPage from "./pages/LobbyPage";
 import GamePage from "./pages/GamePage";
+import EditorPage from "./pages/EditorPage";
 
 function isTokenExpired(token: string): boolean {
   try {
@@ -44,6 +45,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <GamePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/editor"
+        element={
+          <ProtectedRoute>
+            <EditorPage />
           </ProtectedRoute>
         }
       />
