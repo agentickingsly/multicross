@@ -1,35 +1,89 @@
-# Crossword MVP — shared agent context
+# Multicross — shared agent context
 
 ## Project overview
-Multiplayer crossword app. Players join a room via share code and solve a puzzle together in real time.
+Multiplayer crossword app. Players join a room via share code and solve
+a puzzle together in real time. MVP is complete and production-ready.
 
-## Module ownership
-Each agent session owns one module. Do NOT modify files outside your assigned module.
-
-| Module | Path | Owned by |
-|--------|------|----------|
-| REST API | /server/routes | Session 2 |
-| WebSocket + Redis | /server/ws, /server/db/redis.ts | Session 3 |
-| React frontend | /client/src | Session 4 |
-| Puzzle parser | /scripts, /server/routes/puzzles.ts | Session 5 |
-| Integration | all (read-only except glue code) | Session 6 |
-| Shared types | /shared | Any session (additive only) |
-
-## Key contracts
-- All WS event names and payloads: /docs/contracts.md
-- Redis key conventions: /docs/redis.md
-- REST API spec: /docs/api.yaml
-- DB schema: /server/db/schema.sql
-
-## Hard rules
-1. Never rename a WS event or REST endpoint without updating contracts.md
-2. Never change the DB schema without a migration file in /server/db/migrations
-3. Never add a dependency without noting it in your session summary
-4. Prefer Sonnet over Opus for all tasks — only use Opus if you genuinely need deep reasoning
-5. Write a DONE.md summary at the end of your session listing files created/modified
+## Current project state
+- Backend: fully implemented (auth, REST API, WebSocket, Redis pub/sub)
+- Frontend: fully implemented (lobby, game page, crossword grid, contribution view)
+- Database: migrations system in place, 3 seed puzzles loaded
+- CI/CD: GitHub Actions with TypeScript checks and Vitest test suite
+- Security: rate limiting, JWT pinning, WS membership enforcement, Zod validation
 
 ## Stack
-- Backend: Node.js, Express, Socket.io, PostgreSQL (pg), Redis (ioredis), JWT, Zod
-- Frontend: React, Vite, TypeScript, react-router-dom
-- Shared: TypeScript types in /shared/typexs.ts
-- Infra: Docker Compose (postgres + redis)
+- Backend: Node.js, Express, Socket.io, PostgreSQL (pg), Redis (ioredis), JWT, Zod, pino
+- Frontend: React, Vite, TypeScript, react-router-dom, socket.io-client
+- Shared: TypeScript types in /shared/src/types.ts
+- Testing: Vitest + supertest in /server/src/__tests__/
+- Infra: Docker Compose (postgres + redis), PM2, Caddy
+
+## Module ownership
+| Path | Purpose |
+|------|---------|
+| /server/src/routes | REST API handlers |
+| /server/src/ws | WebSocket + Redis pub/sub handlers |
+| /server/src/db | pool.ts, migrate.ts, redis.ts, migrations/ |
+| /server/src/middleware | auth.ts (JWT verify, requireAuth) |
+| /server/src/__tests__ | Vitest integration + unit tests |
+| /client/src/pages | LobbyPage, GamePage, LoginPage, RegisterPage, EditorPage (todo) |
+| /client/src/components | CrosswordGrid.tsx, PuzzleEditor.tsx (todo) |
+| /client/src/utils | crosswordUtils.ts (auto-numbering, shared logic) |
+| /client/src/api | client.ts (all REST calls via apiFetch) |
+| /client/src/ws | socket.ts (Socket.io singleton) |
+| /shared/src | types.ts only — no logic |
+| /scripts | seed.ts, puzzles.json |
+| /docs | contracts.md, redis.md, api.yaml |
+
+## Established patterns
+
+### Server
+- All async Express routes use try/catch with next(err)
+- Zod validation on all REST request bodies before any DB access
+- JWT identity always from s.data.user.userId in WS handlers — never from client payload
+- pg pool imported from server/src/db/pool.ts — never create a new pool
+- pino logger imported from server/src/logger.ts — never use console.log
+- New DB columns require a migration in server/src/db/migrations/
+- Migration files are numbered: 001_, 002_, 003_ etc.
+- Rate limiter and WS init are skipped in NODE_ENV=test
+
+### Frontend
+- Auth token: localStorage key "multicross_token"
+- User object: localStorage key "multicross_user" (JSON)
+- API base URL: import.meta.env.VITE_API_URL
+- All REST calls go through apiFetch() in client/src/api/client.ts
+- All WS events go through the singleton in client/src/ws/socket.ts
+- Cell colors use hex + 2-char alpha suffix (e.g. color + "88" = 53% opacity)
+- filledBy in cell payloads is always userId, never displayName
+
+### TypeScript
+- Shared types imported from /shared/src/types.ts
+- Never use 'any' — use unknown and narrow, or define an interface
+- All route handlers typed with Request, Response, NextFunction
+
+## Puzzle data format
+Grid: (string | null)[][] where null = black cell, "" = empty white, "A"-"Z" = solution
+Clues: { across: Record<number, string>, down: Record<number, string> }
+Clue numbers derived from grid topology — not stored, always computed
+Auto-numbering algorithm lives in client/src/utils/crosswordUtils.ts
+
+## Hard rules
+1. Never rename a WS event or REST endpoint without updating /docs/contracts.md
+2. Never change the DB schema without a new migration file
+3. Never add a dependency without noting it in your session summary
+4. Never create a new pg Pool — import from server/src/db/pool.ts
+5. Never use console.log — import logger from server/src/logger.ts
+6. Write a DONE.md at the end of every session listing files created/modified
+7. Prefer Sonnet over Opus — only use Opus for genuinely ambiguous problems
+
+## Key contracts
+- WS events + REST endpoints: /docs/contracts.md
+- Redis key conventions: /docs/redis.md
+- DB schema: /server/src/db/schema.sql
+- Shared types: /shared/src/types.ts
+
+## Test conventions
+- Test emails: testuser+uuid@test.multicross
+- Tests run sequentially (singleFork: true in vitest.config.ts)
+- NODE_ENV=test skips WS init, rate limiting, server listen
+- Cleanup order: game_cells → game_participants → games → users
