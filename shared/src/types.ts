@@ -22,6 +22,9 @@ export interface Puzzle {
     down: Record<number, string>;
   };
   createdAt: string;
+  updatedAt?: string;
+  status?: 'draft' | 'published';
+  authorId?: string;
 }
 
 export type GameStatus = "waiting" | "active" | "complete";
