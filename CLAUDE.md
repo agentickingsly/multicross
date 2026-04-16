@@ -87,3 +87,14 @@ Auto-numbering algorithm lives in client/src/utils/crosswordUtils.ts
 - Tests run sequentially (singleFork: true in vitest.config.ts)
 - NODE_ENV=test skips WS init, rate limiting, server listen
 - Cleanup order: game_cells → game_participants → games → users
+
+## Skills — read before writing any code
+Always read the relevant skill files from .claude/skills/ before starting work:
+
+- .claude/skills/postgres-patterns.md — DB conventions, query patterns, schema
+- .claude/skills/react-component.md — component structure, style conventions, state patterns
+- .claude/skills/crossword-domain.md — grid format, auto-numbering, puzzle rules
+- .claude/skills/vitest-testing.md — test setup, helpers, what to test
+
+Read all four at the start of every session. They contain patterns that
+must be followed consistently across all sessions.
