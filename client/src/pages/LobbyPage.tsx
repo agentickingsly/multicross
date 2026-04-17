@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Puzzle, User } from "@multicross/shared";
-import { getPuzzles, createGame, joinGame } from "../api/client";
+import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle } from "../api/client";
 
 const s: Record<string, React.CSSProperties> = {
   page: {
@@ -29,6 +29,15 @@ const s: Record<string, React.CSSProperties> = {
     gap: "1rem",
     fontSize: "0.875rem",
   },
+  createPuzzleLink: {
+    color: "rgba(255,255,255,0.85)",
+    textDecoration: "none",
+    cursor: "pointer",
+    fontSize: "0.875rem",
+    background: "none",
+    border: "none",
+    padding: 0,
+  },
   logoutBtn: {
     background: "rgba(255,255,255,0.15)",
     color: "#fff",
@@ -52,11 +61,28 @@ const s: Record<string, React.CSSProperties> = {
     padding: "1.5rem",
     boxShadow: "0 1px 8px rgba(0,0,0,0.07)",
   },
+  sectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "1rem",
+  },
   sectionTitle: {
-    margin: "0 0 1rem",
+    margin: 0,
     fontSize: "1.1rem",
     fontWeight: "700",
     color: "#1e293b",
+  },
+  newPuzzleBtn: {
+    background: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    padding: "0.4rem 0.9rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.8rem",
+    whiteSpace: "nowrap" as const,
   },
   puzzleList: {
     display: "flex",
@@ -86,6 +112,32 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.8rem",
     color: "#64748b",
   },
+  puzzleActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    flexShrink: 0,
+  },
+  editBtn: {
+    background: "transparent",
+    color: "#2563eb",
+    border: "1.5px solid #93c5fd",
+    borderRadius: "6px",
+    padding: "0.3rem 0.7rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.8rem",
+  },
+  deleteBtn: {
+    background: "transparent",
+    color: "#dc2626",
+    border: "1.5px solid #fca5a5",
+    borderRadius: "6px",
+    padding: "0.3rem 0.7rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.8rem",
+  },
   createBtn: {
     background: "#2563eb",
     color: "#fff",
@@ -95,7 +147,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontWeight: "600",
     fontSize: "0.875rem",
-    whiteSpace: "nowrap",
+    whiteSpace: "nowrap" as const,
   },
   joinRow: {
     display: "flex",
@@ -108,7 +160,7 @@ const s: Record<string, React.CSSProperties> = {
     border: "1.5px solid #cbd5e1",
     fontSize: "1rem",
     outline: "none",
-    textTransform: "uppercase",
+    textTransform: "uppercase" as const,
     letterSpacing: "0.1em",
   },
   joinBtn: {
@@ -131,7 +183,25 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.9rem",
     padding: "1rem 0",
   },
+  emptyText: {
+    color: "#94a3b8",
+    fontSize: "0.875rem",
+    padding: "0.5rem 0",
+  },
 };
+
+function badgeStyle(status: "draft" | "published"): React.CSSProperties {
+  return {
+    fontSize: "0.7rem",
+    fontWeight: "700",
+    padding: "0.2rem 0.5rem",
+    borderRadius: "4px",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    background: status === "published" ? "#dcfce7" : "#fef9c3",
+    color: status === "published" ? "#166534" : "#854d0e",
+  };
+}
 
 export default function LobbyPage() {
   const navigate = useNavigate();
@@ -143,6 +213,11 @@ export default function LobbyPage() {
   const [roomCode, setRoomCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joining, setJoining] = useState(false);
+
+  const [myPuzzles, setMyPuzzles] = useState<Puzzle[]>([]);
+  const [loadingMine, setLoadingMine] = useState(true);
+  const [mineError, setMineError] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const currentUser: User | null = (() => {
     try {
@@ -157,6 +232,13 @@ export default function LobbyPage() {
       .then(({ puzzles }) => setPuzzles(puzzles))
       .catch((err) => setPuzzleError(err instanceof Error ? err.message : "Failed to load puzzles"))
       .finally(() => setLoadingPuzzles(false));
+  }, []);
+
+  useEffect(() => {
+    getMyPuzzles()
+      .then(({ puzzles }) => setMyPuzzles(puzzles))
+      .catch((err) => setMineError(err instanceof Error ? err.message : "Failed to load your puzzles"))
+      .finally(() => setLoadingMine(false));
   }, []);
 
   function handleLogout() {
@@ -207,12 +289,28 @@ export default function LobbyPage() {
     }
   }
 
+  async function handleDeletePuzzle(puzzleId: string, title: string) {
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    setDeletingId(puzzleId);
+    try {
+      await deletePuzzle(puzzleId);
+      setMyPuzzles((prev) => prev.filter((p) => p.id !== puzzleId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete puzzle");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div style={s.page}>
       <header style={s.header}>
         <div style={s.headerTitle}>Multicross</div>
         <div style={s.headerRight}>
           <span>Hey, {currentUser?.displayName ?? "Player"}</span>
+          <button style={s.createPuzzleLink} onClick={() => navigate("/editor")}>
+            Create puzzle
+          </button>
           <button style={s.logoutBtn} onClick={handleLogout}>
             Log out
           </button>
@@ -220,6 +318,55 @@ export default function LobbyPage() {
       </header>
 
       <div style={s.content}>
+        {/* My puzzles */}
+        <div style={s.section}>
+          <div style={s.sectionHeader}>
+            <h2 style={s.sectionTitle}>My puzzles</h2>
+            <button style={s.newPuzzleBtn} onClick={() => navigate("/editor")}>
+              + New puzzle
+            </button>
+          </div>
+          {mineError && <div style={s.error}>{mineError}</div>}
+          {loadingMine ? (
+            <div style={s.loading}>Loading your puzzles…</div>
+          ) : myPuzzles.length === 0 ? (
+            <div style={s.emptyText}>
+              You haven't created any puzzles yet — create one!
+            </div>
+          ) : (
+            <div style={s.puzzleList}>
+              {myPuzzles.map((puzzle) => (
+                <div key={puzzle.id} style={s.puzzleCard}>
+                  <div style={s.puzzleInfo}>
+                    <div style={s.puzzleTitle}>{puzzle.title}</div>
+                    <div style={s.puzzleMeta}>
+                      {puzzle.width}×{puzzle.height}
+                    </div>
+                  </div>
+                  <div style={s.puzzleActions}>
+                    <span style={badgeStyle(puzzle.status ?? "draft")}>
+                      {puzzle.status ?? "draft"}
+                    </span>
+                    <button
+                      style={s.editBtn}
+                      onClick={() => navigate(`/editor/${puzzle.id}`)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      style={s.deleteBtn}
+                      onClick={() => handleDeletePuzzle(puzzle.id, puzzle.title)}
+                      disabled={deletingId === puzzle.id}
+                    >
+                      {deletingId === puzzle.id ? "Deleting…" : "Delete"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Join by room code */}
         <div style={s.section}>
           <h2 style={s.sectionTitle}>Join a game</h2>

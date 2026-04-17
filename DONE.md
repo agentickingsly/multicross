@@ -1,3 +1,33 @@
+# Session 3 — Puzzle editor page + My puzzles section
+
+## Files Modified
+
+### client/src/pages/EditorPage.tsx (rewritten)
+- Supports `/editor` (new puzzle) and `/editor/:id` (edit existing)
+- Edit mode: fetches GET /api/puzzles/:id, verifies `authorId` matches current user, redirects to /lobby if not owner
+- `onSave`: POST /api/puzzles for new, PUT /api/puzzles/:id for existing
+- Draft save shows a fixed "Draft saved" toast (3 s) without redirecting
+- Publish redirects to /lobby
+- Save errors shown inline (no more alert())
+
+### client/src/App.tsx (modified)
+- Added protected route `/editor/:id` → EditorPage
+
+### client/src/pages/LobbyPage.tsx (rewritten)
+- "My puzzles" section above "Start a new game"
+  - Fetches GET /api/puzzles/mine on mount
+  - Shows title, status badge (draft/published), grid size, Edit + Delete buttons
+  - Delete: confirm dialog → DELETE /api/puzzles/:id → removes from list
+  - Edit: navigates to /editor/:id
+  - "You haven't created any puzzles yet — create one!" when empty
+- "+ New puzzle" button in My puzzles section header
+- "Create puzzle" button in page header alongside logout
+
+## No new dependencies added
+## TypeScript: zero errors (`npx tsc --noEmit` clean in /client)
+
+---
+
 # Session 1 — Foundation / Scaffold
 
 ## Summary
