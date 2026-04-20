@@ -16,6 +16,6 @@
     "setup": "npm run migrate && npm run seed"
   },
   "devDependencies": {
-    "concurrently": "^8.2.0"
+    "concurrently": "^9.2.1"
   }
 }
