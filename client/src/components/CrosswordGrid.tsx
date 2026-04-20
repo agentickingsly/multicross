@@ -89,6 +89,7 @@ export default function CrosswordGrid({
   const [direction, setDirection] = useState<Direction>("across");
   const [highlightedCells, setHighlightedCells] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
 
   // Keep focus on container so keyboard events fire
   useEffect(() => {
@@ -182,7 +183,7 @@ export default function CrosswordGrid({
       setDirection(dir);
       onCursorMove(clueCells[0][0], clueCells[0][1]);
     }
-    containerRef.current?.focus();
+    hiddenInputRef.current?.focus();
   }
 
   // ── Cell click ──────────────────────────────────────────────────────────────
@@ -197,7 +198,7 @@ export default function CrosswordGrid({
       onCursorMove(row, col);
     }
     setHighlightedCells(new Set());
-    containerRef.current?.focus();
+    hiddenInputRef.current?.focus();
   }
 
   // ── Keyboard ────────────────────────────────────────────────────────────────
@@ -268,6 +269,27 @@ export default function CrosswordGrid({
     }
   }
 
+  // ── Hidden input (mobile keyboard) ─────────────────────────────────────────
+  // Android Chrome fires keydown with key="Unidentified" for letter keys.
+  // handleKeyDown (bubbled from the input) handles arrows/backspace/tab fine.
+  // This handler catches the subsequent `input` event to get the actual letter.
+  // On desktop, handleKeyDown calls e.preventDefault() which suppresses the
+  // `input` event entirely, so there is no double-handling.
+  function handleHiddenInput(e: React.FormEvent<HTMLInputElement>) {
+    const nativeEvent = e.nativeEvent as InputEvent;
+    const char = nativeEvent.data;
+    // Always clear to prevent text accumulation in the hidden input.
+    (e.target as HTMLInputElement).value = "";
+    if (!selected || !char || !/[a-zA-Z]/.test(char)) return;
+    const { row, col } = selected;
+    onCellFill(row, col, char.toUpperCase());
+    const next = nextWhiteCell(row, col, direction);
+    if (next) {
+      setSelected(next);
+      onCursorMove(next.row, next.col);
+    }
+  }
+
   // ── Participant cursor lookup ────────────────────────────────────────────────
 
   function getParticipantAtCell(
@@ -330,6 +352,7 @@ export default function CrosswordGrid({
   const CELL_SIZE = Math.min(52, Math.floor(440 / Math.max(width, height)));
 
   const containerStyle: React.CSSProperties = {
+    position: "relative",
     display: "flex",
     gap: "2rem",
     alignItems: "flex-start",
@@ -460,6 +483,36 @@ export default function CrosswordGrid({
           onSelect={(entry) => selectClue(entry.cells, "down")}
         />
       </div>
+
+      {/* Hidden input — triggers the native keyboard on mobile (Android/iOS).
+          Must NOT use display:none or visibility:hidden (prevents focus on mobile).
+          fontSize:16px prevents automatic zoom on iOS/Android when focused.
+          keydown events bubble up to the container's onKeyDown handler, so
+          arrows/backspace/tab work without any extra wiring. The onInput handler
+          catches Android's letter input which arrives as an input event rather
+          than a keydown with a real key. */}
+      <input
+        ref={hiddenInputRef}
+        type="text"
+        inputMode="text"
+        aria-hidden="true"
+        autoCapitalize="none"
+        autoCorrect="off"
+        autoComplete="off"
+        spellCheck={false}
+        onInput={handleHiddenInput}
+        style={{
+          position: "absolute",
+          left: "-9999px",
+          top: 0,
+          width: "1px",
+          height: "1px",
+          opacity: 0,
+          fontSize: "16px",
+          border: "none",
+          padding: 0,
+        }}
+      />
     </div>
   );
 }
