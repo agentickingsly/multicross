@@ -17,6 +17,9 @@ export interface Puzzle {
         down: Record<number, string>;
     };
     createdAt: string;
+    updatedAt?: string;
+    status?: 'draft' | 'published';
+    authorId?: string;
 }
 export type GameStatus = "waiting" | "active" | "complete";
 export interface Game {
@@ -71,6 +74,10 @@ export interface RoomJoinedPayload {
     game: Game;
     participants: GameParticipant[];
     cells: GameCell[];
+    cursors: Record<string, {
+        row: number;
+        col: number;
+    }>;
 }
 export interface CellUpdatedPayload {
     row: number;
@@ -88,6 +95,7 @@ export interface CursorMovedPayload {
 export interface ParticipantJoinedPayload {
     participant: GameParticipant;
     displayName: string;
+    rejoining: boolean;
 }
 export interface ParticipantLeftPayload {
     userId: string;
