@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-export PATH="/root/.nvm/versions/node/v22.22.2/bin:$PATH"
+export PATH="/root/.nvm/versions/node/v20.20.2/bin:$PATH"
 
 cd /var/www/multicross
 
