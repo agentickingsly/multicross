@@ -83,8 +83,8 @@ export default function RegisterPage() {
       setError("Please fill in all fields.");
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     setError("");
@@ -148,7 +148,7 @@ export default function RegisterPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="min. 6 characters"
+            placeholder="min. 8 characters"
           />
         </label>
 
