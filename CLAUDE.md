@@ -96,6 +96,9 @@ Always read the relevant skill files from .claude/skills/ before starting work:
 - .claude/skills/crossword-domain.md — grid format, auto-numbering, puzzle rules
 - .claude/skills/vitest-testing.md — test setup, helpers, what to test
 - .claude/skills/multicross-gotchas.md — project gotchas: shared dist rebuild, ports, deploy chain, seed data, Redis members vs participants
+- .claude/skills/testing.md — when and how to write tests, mocking rules, coverage expectations
+- .claude/skills/code-review.md — self-review checklist to run before marking any task done
+- .claude/skills/security-performance.md — mandatory security and performance rules for all new code
 
-Read all five at the start of every session. They contain patterns that
+Read all eight at the start of every session. They contain patterns that
 must be followed consistently across all sessions.
