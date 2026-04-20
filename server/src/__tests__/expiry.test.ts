@@ -4,6 +4,10 @@ import pool from "../db/pool";
 import request from "supertest";
 import { runExpiryJob } from "../jobs/expiry";
 
+vi.mock("../db/redis", () => ({
+  deleteGameKeys: vi.fn().mockResolvedValue(undefined),
+}));
+
 const testEmail = () => `testuser+${randomUUID()}@test.multicross`;
 
 let authToken: string;

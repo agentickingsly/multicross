@@ -3,6 +3,11 @@ import { randomUUID } from "crypto";
 import { app } from "../index";
 import pool from "../db/pool";
 
+vi.mock("../db/redis", () => ({
+  pub: { publish: vi.fn().mockResolvedValue(0) },
+  deleteGameKeys: vi.fn().mockResolvedValue(undefined),
+}));
+
 const testEmail = () => `testuser+${randomUUID()}@test.multicross`;
 
 let authToken: string;
