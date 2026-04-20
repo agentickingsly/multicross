@@ -11,6 +11,7 @@ import type {
   CellUpdatedPayload,
   ParticipantJoinedPayload,
   ParticipantLeftPayload,
+  RoomJoinedPayload,
 } from "@multicross/shared";
 import { getGame, getPuzzle } from "../api/client";
 import { ws } from "../ws/socket";
@@ -66,6 +67,10 @@ export default function GamePage() {
         setGame(game);
         setParticipants(participants as ParticipantWithName[]);
         setCells(cells);
+        // If the game already finished while we were away, show the completion state
+        if (game.status === "complete") {
+          setCompletion({ completedAt: game.completedAt!, stats: [] });
+        }
         const { puzzle } = await getPuzzle(game.puzzleId);
         setPuzzle(puzzle);
         startTimeRef.current = Date.now();
@@ -89,6 +94,16 @@ export default function GamePage() {
     });
     return unsub;
   }, [gameId, currentUser]);
+
+  // Restore cursor positions from server on (re)join
+  useEffect(() => {
+    const unsubRoomJoined = ws.on("room_joined", (payload: RoomJoinedPayload) => {
+      if (payload.cursors && Object.keys(payload.cursors).length > 0) {
+        setCursors(payload.cursors);
+      }
+    });
+    return unsubRoomJoined;
+  }, []);
 
   // WS event listeners
   useEffect(() => {

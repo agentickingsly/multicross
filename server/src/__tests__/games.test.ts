@@ -111,10 +111,11 @@ describe("POST /api/games/:id/join", () => {
     expect(res.body).toHaveProperty("participant");
   });
 
-  it("returns 409 if user tries to join same game twice", async () => {
+  it("returns 200 with existing participant if user tries to rejoin same game", async () => {
     const res = await request(app)
       .post(`/api/games/${gameId}/join`)
       .set("Authorization", `Bearer ${secondUserToken}`);
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("participant");
   });
 });

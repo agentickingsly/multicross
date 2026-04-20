@@ -29,8 +29,17 @@ Stores the last-known cursor position for each participant.
 Tracks the set of user IDs currently in the game room.
 
 - **Members:** `{userId}` strings
-- **Updated by:** Session 3 on `join_room` (SADD) and `leave_room` / disconnect (SREM)
+- **Updated by:** WS handlers on `join_room` (SADD) and `leave_room` / disconnect (SREM)
 - **Used for:** Validating that a user is in a game before processing their events
+
+### `game:{gameId}:members` — Set
+
+Permanent record of every user who has ever joined this game via WS.
+
+- **Members:** `{userId}` strings
+- **Updated by:** WS `join_room` handler (SADD only — never removed on disconnect)
+- **Used for:** Distinguishing a first-time join from a rejoin (to emit `rejoining: true` in `participant_joined`)
+- **Cleared:** When game transitions to `complete` (same as other game keys)
 
 ### `channel:game:{gameId}` — Pub/Sub Channel
 

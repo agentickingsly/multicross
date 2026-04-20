@@ -22,10 +22,10 @@ All events are typed in `/shared/src/types.ts`.
 
 | Event | Payload |
 |-------|---------|
-| `room_joined` | `{ game: Game, participants: GameParticipant[], cells: GameCell[] }` |
+| `room_joined` | `{ game: Game, participants: GameParticipant[], cells: GameCell[], cursors: Record<string, { row, col }> }` |
 | `cell_updated` | `{ row: number, col: number, value: string, filledBy: string, correct: boolean }` |
 | `cursor_moved` | `{ userId: string, row: number, col: number, color: string }` |
-| `participant_joined` | `{ participant: GameParticipant }` |
+| `participant_joined` | `{ participant: GameParticipant, displayName: string, rejoining: boolean }` |
 | `participant_left` | `{ userId: string }` |
 | `game_complete` | `{ completedAt: string, stats: { userId: string, cellsFilled: number }[] }` |
 
@@ -42,7 +42,7 @@ Base path: `/api`
 | GET | `/puzzles` | — | `{ puzzles: Puzzle[] }` |
 | GET | `/puzzles/:id` | — | `{ puzzle: Puzzle }` |
 | POST | `/games` | `{ puzzleId: string }` | `{ game: Game }` |
-| POST | `/games/:id/join` | `{ userId: string }` | `{ game: Game, participant: GameParticipant }` |
+| POST | `/games/:id/join` | — | `{ participant: GameParticipant }` — 200 for new join or rejoin (idempotent) |
 | GET | `/games/:id` | — | `{ game: Game, participants: GameParticipant[], cells: GameCell[] }` |
 
 All error responses: `{ error: string }` with appropriate HTTP status code.
@@ -58,7 +58,8 @@ See `/docs/redis.md` for full details.
 |-----|------|-------------|
 | `game:{gameId}:state` | Hash | Full game grid: field = `{row}:{col}`, value = `{ value, filledBy }` JSON |
 | `game:{gameId}:cursors` | Hash | Cursor positions: field = `{userId}`, value = `{ row, col }` JSON |
-| `game:{gameId}:participants` | Set | Set of `userId` strings currently in the room |
+| `game:{gameId}:participants` | Set | Set of `userId` strings currently active in the room |
+| `game:{gameId}:members` | Set | Permanent set of `userId` strings who have ever joined via WS (used for rejoin detection) |
 | `channel:game:{gameId}` | Pub/Sub channel | Used to broadcast events to all server instances |
 
 ---

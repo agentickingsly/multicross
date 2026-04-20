@@ -96,6 +96,7 @@ export interface RoomJoinedPayload {
   game: Game;
   participants: GameParticipant[];
   cells: GameCell[];
+  cursors: Record<string, { row: number; col: number }>;
 }
 
 export interface CellUpdatedPayload {
@@ -116,6 +117,7 @@ export interface CursorMovedPayload {
 export interface ParticipantJoinedPayload {
   participant: GameParticipant;
   displayName: string;
+  rejoining: boolean;
 }
 
 export interface ParticipantLeftPayload {

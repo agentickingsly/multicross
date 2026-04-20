@@ -111,7 +111,16 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
       [gameId, userId]
     );
     if (existingParticipant.rows[0]) {
-      res.status(409).json({ error: "Already joined this game" });
+      const p = existingParticipant.rows[0];
+      res.status(200).json({
+        participant: {
+          id: p.id,
+          gameId: p.game_id,
+          userId: p.user_id,
+          joinedAt: p.joined_at,
+          color: p.color,
+        },
+      });
       return;
     }
 

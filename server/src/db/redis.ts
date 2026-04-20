@@ -99,12 +99,30 @@ export async function getParticipants(gameId: string): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
+// game:{gameId}:members helpers
+// Permanent set of user IDs who have ever joined this game via WS.
+// Unlike :participants, members are never removed on disconnect.
+// Used to detect rejoins vs first-time joins.
+// ---------------------------------------------------------------------------
+
+/** Returns true if the user has previously joined this game via WS. */
+export async function isMember(gameId: string, userId: string): Promise<boolean> {
+  return (await redis.sismember(`game:${gameId}:members`, userId)) === 1;
+}
+
+/** Records that a user has joined this game (idempotent). */
+export async function addMember(gameId: string, userId: string): Promise<void> {
+  await redis.sadd(`game:${gameId}:members`, userId);
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup: delete all keys for a game
 // ---------------------------------------------------------------------------
 export async function deleteGameKeys(gameId: string): Promise<void> {
   await redis.del(
     `game:${gameId}:state`,
     `game:${gameId}:cursors`,
-    `game:${gameId}:participants`
+    `game:${gameId}:participants`,
+    `game:${gameId}:members`
   );
 }

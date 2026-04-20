@@ -14,6 +14,8 @@ import {
   addParticipant,
   removeParticipant,
   deleteGameKeys,
+  isMember,
+  addMember,
 } from "../db/redis";
 
 // ---------------------------------------------------------------------------
@@ -198,14 +200,20 @@ export function registerWsHandlers(io: CrosswordServer): void {
         // Join Socket.io room
         await s.join(gameId);
 
-        // Track participant in Redis
-        await addParticipant(gameId, userId);
+        // Detect rejoin before updating Redis membership
+        const rejoining = await isMember(gameId, userId);
+
+        // Track participant in Redis (active presence + permanent membership)
+        await Promise.all([
+          addParticipant(gameId, userId),
+          addMember(gameId, userId),
+        ]);
 
         // Subscribe to pub/sub channel for this game (idempotent)
         subscribeToGameChannel(io, gameId);
 
-        // Load current state from postgres for canonical GameCell objects
-        const [participantsResult, cellsResult] = await Promise.all([
+        // Load current state from postgres for canonical GameCell objects + current cursors
+        const [participantsResult, cellsResult, cursors] = await Promise.all([
           pool.query(
             `SELECT id, game_id, user_id, joined_at, color FROM game_participants WHERE game_id = $1`,
             [gameId]
@@ -214,6 +222,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
             `SELECT id, game_id, row, col, value, filled_by, filled_at FROM game_cells WHERE game_id = $1`,
             [gameId]
           ),
+          getCursors(gameId),
         ]);
 
         const game = mapGameRow(gameResult.rows[0]);
@@ -227,8 +236,8 @@ export function registerWsHandlers(io: CrosswordServer): void {
         const myParticipant = participants.find((p) => p.userId === userId);
         if (myParticipant) s.data.gameParticipants[gameId] = myParticipant;
 
-        // Emit room_joined only to connecting socket
-        s.emit("room_joined", { game, participants, cells });
+        // Emit room_joined only to connecting socket (includes current cursors for restoration)
+        s.emit("room_joined", { game, participants, cells, cursors });
 
         // Broadcast participant_joined to everyone else in the room
         if (myParticipant) {
@@ -237,7 +246,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
             [userId]
           );
           const displayName: string = userResult.rows[0]?.display_name ?? `Player ${userId.slice(-4)}`;
-          const participantJoinedPayload = { participant: myParticipant, displayName };
+          const participantJoinedPayload = { participant: myParticipant, displayName, rejoining };
           s.to(gameId).emit("participant_joined", participantJoinedPayload);
 
           // Publish for other server instances
