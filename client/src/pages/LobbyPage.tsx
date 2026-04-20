@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Puzzle, User } from "@multicross/shared";
-import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle, getMyActiveGames } from "../api/client";
+import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle, getMyActiveGames, abandonGame } from "../api/client";
 import type { ActiveGame } from "../api/client";
 
 const s: Record<string, React.CSSProperties> = {
@@ -225,6 +225,17 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.8rem",
     flexShrink: 0,
   },
+  abandonBtn: {
+    background: "transparent",
+    color: "#64748b",
+    border: "1.5px solid #cbd5e1",
+    borderRadius: "6px",
+    padding: "0.4rem 0.9rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.8rem",
+    flexShrink: 0,
+  },
 };
 
 function badgeStyle(status: "draft" | "published"): React.CSSProperties {
@@ -258,6 +269,8 @@ export default function LobbyPage() {
 
   const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
   const [loadingActiveGames, setLoadingActiveGames] = useState(true);
+  const [abandoningId, setAbandoningId] = useState<string | null>(null);
+  const [abandonError, setAbandonError] = useState<{ id: string; msg: string } | null>(null);
 
   const currentUser: User | null = (() => {
     try {
@@ -341,6 +354,20 @@ export default function LobbyPage() {
     }
   }
 
+  async function handleAbandonGame(gameId: string) {
+    if (!confirm("Are you sure you want to abandon this game? This cannot be undone.")) return;
+    setAbandoningId(gameId);
+    setAbandonError(null);
+    try {
+      await abandonGame(gameId);
+      setActiveGames((prev) => prev.filter((g) => g.id !== gameId));
+    } catch (err) {
+      setAbandonError({ id: gameId, msg: err instanceof Error ? err.message : "Failed to abandon game" });
+    } finally {
+      setAbandoningId(null);
+    }
+  }
+
   async function handleDeletePuzzle(puzzleId: string, title: string) {
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
     setDeletingId(puzzleId);
@@ -379,29 +406,42 @@ export default function LobbyPage() {
             ) : (
               <div style={s.puzzleList}>
                 {activeGames.map((game) => (
-                  <div
-                    key={game.id}
-                    style={s.activeGameCard}
-                    onClick={() => navigate(`/game/${game.id}`)}
-                  >
-                    <div style={s.activeGameInfo}>
-                      <div style={s.activeGameTitle}>{game.puzzleTitle}</div>
-                      <div style={s.activeGameMeta}>
-                        {game.participantCount} player{game.participantCount !== 1 ? "s" : ""}
-                        {" · "}
-                        <span style={{ textTransform: "capitalize" }}>{game.status}</span>
-                        {" · "}
-                        {new Date(game.createdAt).toLocaleDateString()}
-                        {" · "}
-                        Room {game.roomCode}
+                  <div key={game.id}>
+                    <div
+                      style={s.activeGameCard}
+                      onClick={() => navigate(`/game/${game.id}`)}
+                    >
+                      <div style={s.activeGameInfo}>
+                        <div style={s.activeGameTitle}>{game.puzzleTitle}</div>
+                        <div style={s.activeGameMeta}>
+                          {game.participantCount} player{game.participantCount !== 1 ? "s" : ""}
+                          {" · "}
+                          <span style={{ textTransform: "capitalize" }}>{game.status}</span>
+                          {" · "}
+                          {new Date(game.createdAt).toLocaleDateString()}
+                          {" · "}
+                          Room {game.roomCode}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+                        <button
+                          style={s.abandonBtn}
+                          disabled={abandoningId === game.id}
+                          onClick={(e) => { e.stopPropagation(); handleAbandonGame(game.id); }}
+                        >
+                          {abandoningId === game.id ? "Abandoning…" : "Abandon"}
+                        </button>
+                        <button
+                          style={s.rejoinBtn}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/game/${game.id}`); }}
+                        >
+                          Rejoin
+                        </button>
                       </div>
                     </div>
-                    <button
-                      style={s.rejoinBtn}
-                      onClick={(e) => { e.stopPropagation(); navigate(`/game/${game.id}`); }}
-                    >
-                      Rejoin
-                    </button>
+                    {abandonError?.id === game.id && (
+                      <div style={s.error}>{abandonError.msg}</div>
+                    )}
                   </div>
                 ))}
               </div>
