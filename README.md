@@ -11,6 +11,18 @@ Multiplayer crossword app. Solve puzzles together in real time.
 - Redis 7
 - Docker (optional, for local dev)
 
+## Branching strategy
+
+| Branch | Purpose |
+|---|---|
+| `main` | Active development. All feature branches merge here via PR. CI runs type checks and tests on every push and PR. Never auto-deploys. |
+| `production` | Stable release branch. Reflects what is live on multicross.org. Auto-deploys to VPS on every push. |
+
+**Workflow:**
+1. Feature work happens on `feature/*` branches; PRs merge into `main`.
+2. When ready to release, open a PR from `main` → `production` (or merge directly).
+3. Pushing to `production` triggers the Deploy workflow, which runs the full test suite before deploying.
+
 ## Local development
 
 ```bash

@@ -7,6 +7,8 @@
 name: Deploy
 
 on:
+  push:
+    branches: [production]
   workflow_dispatch:
     inputs:
       environment:
@@ -18,8 +20,55 @@ on:
           - production
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crossword_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: install dependencies
+        run: npm install
+
+      - name: type check shared
+        run: cd shared && npx tsc --noEmit
+
+      - name: type check server
+        run: cd server && npx tsc --noEmit
+
+      - name: type check client
+        run: cd client && npx tsc --noEmit
+
+      - name: run server tests
+        run: npm run test --workspace=server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crossword_test
+          JWT_SECRET: test-secret-at-least-32-characters-long
+          NODE_ENV: test
+
   deploy:
     runs-on: ubuntu-latest
+    needs: build
 
     steps:
       - name: Deploy to VPS
