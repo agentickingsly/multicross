@@ -46,6 +46,7 @@ const ALLOWED_EVENTS = new Set([
   "participant_joined",
   "participant_left",
   "game_complete",
+  "game_abandoned",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -300,21 +301,25 @@ export function registerWsHandlers(io: CrosswordServer): void {
         const expected = grid ? (grid[row]?.[col] ?? null) : null;
         const correct = normalised !== "" && expected !== null && normalised === expected;
 
-        // Persist to postgres (upsert)
-        if (normalised !== "") {
-          await pool.query(
-            `INSERT INTO game_cells (game_id, row, col, value, filled_by, filled_at)
-             VALUES ($1, $2, $3, $4, $5, now())
-             ON CONFLICT (game_id, row, col)
-             DO UPDATE SET value = EXCLUDED.value, filled_by = EXCLUDED.filled_by, filled_at = EXCLUDED.filled_at`,
-            [gameId, row, col, normalised, userId]
-          );
-        } else {
-          await pool.query(
-            `DELETE FROM game_cells WHERE game_id = $1 AND row = $2 AND col = $3`,
-            [gameId, row, col]
-          );
-        }
+        // Persist to postgres (upsert) and record activity timestamp
+        await Promise.all([
+          normalised !== ""
+            ? pool.query(
+                `INSERT INTO game_cells (game_id, row, col, value, filled_by, filled_at)
+                 VALUES ($1, $2, $3, $4, $5, now())
+                 ON CONFLICT (game_id, row, col)
+                 DO UPDATE SET value = EXCLUDED.value, filled_by = EXCLUDED.filled_by, filled_at = EXCLUDED.filled_at`,
+                [gameId, row, col, normalised, userId]
+              )
+            : pool.query(
+                `DELETE FROM game_cells WHERE game_id = $1 AND row = $2 AND col = $3`,
+                [gameId, row, col]
+              ),
+          pool.query(
+            `UPDATE games SET last_activity_at = now() WHERE id = $1`,
+            [gameId]
+          ),
+        ]);
 
         // Broadcast cell_updated to ALL sockets in room (including sender)
         const cellUpdatedPayload = { row, col, value: normalised, filledBy: userId, correct };

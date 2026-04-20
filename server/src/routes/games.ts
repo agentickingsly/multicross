@@ -2,7 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import pool from "../db/pool";
+import { pub } from "../db/redis";
 import { requireAuth } from "../middleware/auth";
+import { logger } from "../logger";
 
 const router = Router();
 
@@ -101,8 +103,8 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
       return;
     }
     const g = gameResult.rows[0];
-    if (g.status === "complete") {
-      res.status(400).json({ error: "Game is already complete" });
+    if (g.status === "complete" || g.status === "abandoned" || g.status === "expired") {
+      res.status(400).json({ error: "Game is no longer active" });
       return;
     }
 
@@ -153,6 +155,60 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
   }
 });
 
+// PATCH /api/games/:id/abandon — creator-only; sets status to abandoned + broadcasts WS event
+router.patch("/:id/abandon", requireAuth, async (req, res, next) => {
+  try {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    if (!idParsed.success) {
+      res.status(400).json({ error: "Invalid game ID" });
+      return;
+    }
+    const gameId = idParsed.data;
+    const userId = req.user!.userId;
+
+    const gameResult = await pool.query(
+      `SELECT id, status, created_by FROM games WHERE id = $1`,
+      [gameId]
+    );
+    if (!gameResult.rows[0]) {
+      res.status(404).json({ error: "Game not found" });
+      return;
+    }
+    const g = gameResult.rows[0];
+
+    if (g.created_by !== userId) {
+      res.status(403).json({ error: "Only the game creator can abandon this game" });
+      return;
+    }
+    if (g.status === "complete" || g.status === "abandoned" || g.status === "expired") {
+      res.status(400).json({ error: "Game is already finished" });
+      return;
+    }
+
+    await pool.query(
+      `UPDATE games SET status = 'abandoned' WHERE id = $1`,
+      [gameId]
+    );
+
+    // Broadcast game_abandoned to all players in the room via Redis pub/sub relay
+    const payload = { gameId };
+    await pub.publish(
+      `channel:game:${gameId}`,
+      JSON.stringify({ event: "game_abandoned", payload, sourceSocketId: "__server__" })
+    );
+
+    // Clean up Redis keys for the game
+    const { deleteGameKeys } = await import("../db/redis");
+    await deleteGameKeys(gameId).catch((err) =>
+      logger.error({ err, gameId }, "Failed to delete Redis keys on abandon")
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/games/my-active — games the current user is part of that aren't complete
 router.get("/my-active", requireAuth, async (req, res, next) => {
   try {
@@ -169,7 +225,7 @@ router.get("/my-active", requireAuth, async (req, res, next) => {
        JOIN game_participants gp  ON gp.game_id = g.id AND gp.user_id = $1
        JOIN puzzles p             ON p.id = g.puzzle_id
        JOIN game_participants gp2 ON gp2.game_id = g.id
-       WHERE g.status != 'complete'
+       WHERE g.status IN ('waiting', 'active')
        GROUP BY g.id, g.room_code, g.status, g.created_at, p.title
        ORDER BY g.created_at DESC`,
       [userId]

@@ -15,6 +15,7 @@ import authRouter from "./routes/auth";
 import puzzlesRouter from "./routes/puzzles";
 import gamesRouter from "./routes/games";
 import { registerWsHandlers } from "./ws/handlers";
+import { startExpiryJob } from "./jobs/expiry";
 
 const app = express();
 app.set('trust proxy', 1);
@@ -90,6 +91,7 @@ if (process.env.NODE_ENV !== "test") {
     cors: { origin: allowedOrigins, credentials: true },
   });
   registerWsHandlers(io);
+  startExpiryJob();
 
   const PORT = process.env.PORT ?? 3001;
   httpServer.listen(PORT, () => {

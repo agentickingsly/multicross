@@ -21,7 +21,7 @@ export interface Puzzle {
     status?: 'draft' | 'published';
     authorId?: string;
 }
-export type GameStatus = "waiting" | "active" | "complete";
+export type GameStatus = "waiting" | "active" | "complete" | "abandoned" | "expired";
 export interface Game {
     id: string;
     puzzleId: string;
@@ -107,6 +107,9 @@ export interface GameCompletePayload {
         cellsFilled: number;
     }[];
 }
+export interface GameAbandonedPayload {
+    gameId: string;
+}
 /** Union map of all WS event names to their payload types */
 export interface ClientToServerEvents {
     join_room: (payload: JoinRoomPayload) => void;
@@ -121,6 +124,7 @@ export interface ServerToClientEvents {
     participant_joined: (payload: ParticipantJoinedPayload) => void;
     participant_left: (payload: ParticipantLeftPayload) => void;
     game_complete: (payload: GameCompletePayload) => void;
+    game_abandoned: (payload: GameAbandonedPayload) => void;
 }
 export interface RegisterRequest {
     email: string;

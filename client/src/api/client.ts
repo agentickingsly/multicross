@@ -130,6 +130,10 @@ export function getGame(gameId: string): Promise<GetGameResponse> {
   return apiFetch<GetGameResponse>(`/games/${gameId}`);
 }
 
+export function abandonGame(gameId: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/games/${gameId}/abandon`, { method: "PATCH" });
+}
+
 export function createGame(puzzleId: string): Promise<CreateGameResponse & { roomCode: string }> {
   return apiFetch<CreateGameResponse & { roomCode: string }>(
     "/games",

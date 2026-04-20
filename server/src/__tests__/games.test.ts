@@ -217,4 +217,79 @@ describe("GET /api/games/my-active", () => {
     const res = await request(app).get("/api/games/my-active");
     expect(res.status).toBe(401);
   });
+
+  it("does not include abandoned or expired games", async () => {
+    // Mark the active game as abandoned
+    await pool.query(`UPDATE games SET status = 'abandoned' WHERE id = $1`, [activeGameId]);
+
+    const res = await request(app)
+      .get("/api/games/my-active")
+      .set("Authorization", `Bearer ${ownerToken}`);
+    const ids = res.body.games.map((g: { id: string }) => g.id);
+    expect(ids).not.toContain(activeGameId);
+
+    // Restore for other tests (won't affect cleanup)
+    await pool.query(`UPDATE games SET status = 'waiting' WHERE id = $1`, [activeGameId]);
+  });
+});
+
+describe("PATCH /api/games/:id/abandon", () => {
+  let creatorToken: string;
+  let nonCreatorToken: string;
+  let gameId: string;
+
+  beforeAll(async () => {
+    const creatorRes = await request(app)
+      .post("/api/auth/register")
+      .send({ email: testEmail(), displayName: "Abandon Creator", password: "testpassword123" });
+    creatorToken = creatorRes.body.token;
+
+    const nonCreatorRes = await request(app)
+      .post("/api/auth/register")
+      .send({ email: testEmail(), displayName: "Abandon Non-Creator", password: "testpassword123" });
+    nonCreatorToken = nonCreatorRes.body.token;
+
+    const createRes = await request(app)
+      .post("/api/games")
+      .set("Authorization", `Bearer ${creatorToken}`)
+      .send({ puzzleId: testPuzzleId });
+    gameId = createRes.body.game.id;
+  });
+
+  it("returns 401 without auth token", async () => {
+    const res = await request(app).patch(`/api/games/${gameId}/abandon`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 when a non-creator tries to abandon", async () => {
+    const res = await request(app)
+      .patch(`/api/games/${gameId}/abandon`)
+      .set("Authorization", `Bearer ${nonCreatorToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 and sets status to abandoned for the creator", async () => {
+    const res = await request(app)
+      .patch(`/api/games/${gameId}/abandon`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("success", true);
+
+    const { rows } = await pool.query(`SELECT status FROM games WHERE id = $1`, [gameId]);
+    expect(rows[0].status).toBe("abandoned");
+  });
+
+  it("returns 400 when trying to abandon an already-abandoned game", async () => {
+    const res = await request(app)
+      .patch(`/api/games/${gameId}/abandon`)
+      .set("Authorization", `Bearer ${creatorToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when game ID is not a valid UUID", async () => {
+    const res = await request(app)
+      .patch("/api/games/not-a-uuid/abandon")
+      .set("Authorization", `Bearer ${creatorToken}`);
+    expect(res.status).toBe(400);
+  });
 });

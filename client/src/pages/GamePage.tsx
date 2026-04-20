@@ -7,13 +7,14 @@ import type {
   GameCell,
   User,
   GameCompletePayload,
+  GameAbandonedPayload,
   CursorMovedPayload,
   CellUpdatedPayload,
   ParticipantJoinedPayload,
   ParticipantLeftPayload,
   RoomJoinedPayload,
 } from "@multicross/shared";
-import { getGame, getPuzzle } from "../api/client";
+import { getGame, getPuzzle, abandonGame } from "../api/client";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
 
@@ -50,10 +51,12 @@ export default function GamePage() {
   const [cells, setCells] = useState<GameCell[]>([]);
   const [cursors, setCursors] = useState<Record<string, CursorPos>>({});
   const [completion, setCompletion] = useState<GameCompletePayload | null>(null);
+  const [gameEnded, setGameEnded] = useState<{ status: "abandoned" | "expired" } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [showContributions, setShowContributions] = useState(false);
+  const [abandonLoading, setAbandonLoading] = useState(false);
   const startTimeRef = useRef<number>(Date.now());
 
   // Load game + puzzle
@@ -67,9 +70,11 @@ export default function GamePage() {
         setGame(game);
         setParticipants(participants as ParticipantWithName[]);
         setCells(cells);
-        // If the game already finished while we were away, show the completion state
+        // If the game already finished while we were away, show the appropriate end state
         if (game.status === "complete") {
           setCompletion({ completedAt: game.completedAt!, stats: [] });
+        } else if (game.status === "abandoned" || game.status === "expired") {
+          setGameEnded({ status: game.status });
         }
         const { puzzle } = await getPuzzle(game.puzzleId);
         setPuzzle(puzzle);
@@ -152,12 +157,17 @@ export default function GamePage() {
       setParticipants((prev) => prev.filter((p) => p.userId !== payload.userId));
     });
 
+    const unsubAbandoned = ws.on("game_abandoned", (_payload: GameAbandonedPayload) => {
+      setGameEnded({ status: "abandoned" });
+    });
+
     return () => {
       unsubCursor();
       unsubCell();
       unsubComplete();
       unsubJoined();
       unsubLeft();
+      unsubAbandoned();
     };
   }, [gameId]);
 
@@ -205,6 +215,20 @@ export default function GamePage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function handleAbandon() {
+    if (!gameId) return;
+    if (!window.confirm("Abandon this game? This cannot be undone and all players will be removed.")) return;
+    setAbandonLoading(true);
+    try {
+      await abandonGame(gameId);
+      // The game_abandoned WS event will arrive and trigger the end state for all players
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to abandon game");
+    } finally {
+      setAbandonLoading(false);
+    }
   }
 
   function getDisplayName(p: ParticipantWithName): string {
@@ -355,6 +379,16 @@ export default function GamePage() {
       fontWeight: "600",
       cursor: "pointer",
     },
+    abandonBtn: {
+      background: "rgba(220,38,38,0.15)",
+      color: "#fca5a5",
+      border: "1px solid rgba(220,38,38,0.4)",
+      borderRadius: "6px",
+      padding: "0.3rem 0.6rem",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s",
+    },
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -402,6 +436,15 @@ export default function GamePage() {
           <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
             {showContributions ? "Hide contributions" : "Show contributions"}
           </button>
+          {currentUser?.id === game.createdBy && !gameEnded && game.status !== "complete" && (
+            <button
+              style={s.abandonBtn}
+              onClick={handleAbandon}
+              disabled={abandonLoading}
+            >
+              {abandonLoading ? "Abandoning…" : "Abandon game"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -515,6 +558,25 @@ export default function GamePage() {
                 })}
               </div>
             )}
+            <button style={s.modalBtn} onClick={() => navigate("/lobby")}>
+              Back to lobby
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Abandoned / expired modal */}
+      {gameEnded && (
+        <div style={s.modal}>
+          <div style={s.modalBox}>
+            <div style={{ ...s.modalTitle, color: gameEnded.status === "abandoned" ? "#dc2626" : "#92400e" }}>
+              {gameEnded.status === "abandoned" ? "Game Abandoned" : "Game Expired"}
+            </div>
+            <p style={{ margin: 0, color: "#374151" }}>
+              {gameEnded.status === "abandoned"
+                ? "The game creator has ended this session."
+                : "This game was automatically closed due to inactivity."}
+            </p>
             <button style={s.modalBtn} onClick={() => navigate("/lobby")}>
               Back to lobby
             </button>

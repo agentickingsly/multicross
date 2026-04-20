@@ -22,12 +22,13 @@ All events are typed in `/shared/src/types.ts`.
 
 | Event | Payload |
 |-------|---------|
-| `room_joined` | `{ game: Game, participants: GameParticipant[], cells: GameCell[], cursors: Record<string, { row, col }> }` |
+| `room_joined` | `{ game: Game, participants: GameParticipant[], cells: GameCell[], cursors: Record<string, {row,col}> }` |
 | `cell_updated` | `{ row: number, col: number, value: string, filledBy: string, correct: boolean }` |
 | `cursor_moved` | `{ userId: string, row: number, col: number, color: string }` |
 | `participant_joined` | `{ participant: GameParticipant, displayName: string, rejoining: boolean }` |
 | `participant_left` | `{ userId: string }` |
 | `game_complete` | `{ completedAt: string, stats: { userId: string, cellsFilled: number }[] }` |
+| `game_abandoned` | `{ gameId: string }` |
 
 ---
 
@@ -42,8 +43,9 @@ Base path: `/api`
 | GET | `/puzzles` | — | `{ puzzles: Puzzle[] }` |
 | GET | `/puzzles/:id` | — | `{ puzzle: Puzzle }` |
 | POST | `/games` | `{ puzzleId: string }` | `{ game: Game }` |
-| POST | `/games/:id/join` | — | `{ participant: GameParticipant }` — 200 for new join or rejoin (idempotent) |
-| GET | `/games/my-active` | — | `{ games: ActiveGame[] }` — caller's non-complete games |
+| POST | `/games/:id/join` | — | `{ participant: GameParticipant }` — 200 for new join or rejoin (idempotent); 400 if game is no longer active |
+| PATCH | `/games/:id/abandon` | — | `{ success: true }` — creator only; 403 for others; 400 if already finished |
+| GET | `/games/my-active` | — | `{ games: ActiveGame[] }` — caller's waiting/active games only |
 | GET | `/games/:id` | — | `{ game: Game, participants: GameParticipant[], cells: GameCell[] }` |
 
 `ActiveGame`: `{ id, roomCode, status: "waiting"|"active", createdAt, puzzleTitle, participantCount: number }`
@@ -75,7 +77,7 @@ See `/server/src/db/schema.sql` for full DDL.
 |-------|-------------|-----------------|
 | `users` | `id` (uuid) | `email` (unique), `display_name`, `password_hash` |
 | `puzzles` | `id` (uuid) | `width`, `height`, `grid` (jsonb), `clues` (jsonb) |
-| `games` | `id` (uuid) | `room_code` (unique 6-char), `status` (enum), `puzzle_id` → puzzles, `created_by` → users |
+| `games` | `id` (uuid) | `room_code` (unique 6-char), `status` (`waiting`\|`active`\|`complete`\|`abandoned`\|`expired`), `puzzle_id` → puzzles, `created_by` → users, `last_activity_at` (updated on each fill_cell) |
 | `game_participants` | `id` (uuid) | `game_id` → games, `user_id` → users, `color` (hex), unique(game_id, user_id) |
 | `game_cells` | `id` (uuid) | `game_id` → games, `row`, `col`, `value` (char), `filled_by` → users, unique(game_id, row, col) |
 
