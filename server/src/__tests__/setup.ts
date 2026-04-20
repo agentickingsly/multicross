@@ -29,5 +29,11 @@ afterAll(async () => {
       SELECT id FROM users WHERE email LIKE '%@test.multicross'
     )
   `);
+  await pool.query(`
+    DELETE FROM puzzles
+    WHERE author_id IN (
+      SELECT id FROM users WHERE email LIKE '%@test.multicross'
+    )
+  `);
   await pool.query(`DELETE FROM users WHERE email LIKE '%@test.multicross'`);
 });
