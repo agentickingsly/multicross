@@ -6,17 +6,33 @@ a puzzle together in real time. MVP is complete and production-ready.
 
 ## Current project state
 - Backend: fully implemented (auth, REST API, WebSocket, Redis pub/sub)
-- Frontend: fully implemented (lobby, game page, crossword grid, contribution view)
-- Database: migrations system in place, 3 seed puzzles loaded
-- CI/CD: GitHub Actions with TypeScript checks and Vitest test suite
+- Frontend: fully implemented (lobby, game page, crossword grid, contribution view, puzzle editor)
+- Database: migrations system in place; puzzles created via puzzle editor
+- CI/CD: GitHub Actions — TypeScript checks and Vitest test suite on all pushes; auto-deploy to VPS on push to `production` via appleboy/ssh-action; manual deploy also available via workflow_dispatch
 - Security: rate limiting, JWT pinning, WS membership enforcement, Zod validation
 
+## Features shipped
+- Puzzle editor with grid size selector
+- Mobile keyboard fix (hidden input triggers native keyboard)
+- Rejoin session (reconnect to an in-progress game)
+- Active games section in lobby
+- Game expiry and abandon flow
+
 ## Stack
-- Backend: Node.js, Express, Socket.io, PostgreSQL (pg), Redis (ioredis), JWT, Zod, pino
+- Backend: Node.js 20 LTS, Express, Socket.io, PostgreSQL (pg), Redis (ioredis), JWT, Zod, pino
 - Frontend: React, Vite, TypeScript, react-router-dom, socket.io-client
 - Shared: TypeScript types in /shared/src/types.ts
 - Testing: Vitest + supertest in /server/src/__tests__/
-- Infra: Docker Compose (postgres + redis), PM2, Caddy
+- Infra: Docker Compose (postgres + redis), PM2, Caddy, Node 20 LTS
+
+## Branching strategy
+| Branch | Role |
+|--------|------|
+| `main` | Development branch — all feature work merges here |
+| `production` | Auto-deploy branch — push here to trigger deploy to VPS |
+
+To deploy: `git checkout production && git merge main && git push origin production && git checkout main`
+See `.claude/skills/git-workflow.md` for the full procedure.
 
 ## Module ownership
 | Path | Purpose |
@@ -26,8 +42,8 @@ a puzzle together in real time. MVP is complete and production-ready.
 | /server/src/db | pool.ts, migrate.ts, redis.ts, migrations/ |
 | /server/src/middleware | auth.ts (JWT verify, requireAuth) |
 | /server/src/__tests__ | Vitest integration + unit tests |
-| /client/src/pages | LobbyPage, GamePage, LoginPage, RegisterPage, EditorPage (todo) |
-| /client/src/components | CrosswordGrid.tsx, PuzzleEditor.tsx (todo) |
+| /client/src/pages | LobbyPage, GamePage, LoginPage, RegisterPage, EditorPage |
+| /client/src/components | CrosswordGrid.tsx, PuzzleEditor.tsx |
 | /client/src/utils | crosswordUtils.ts (auto-numbering, shared logic) |
 | /client/src/api | client.ts (all REST calls via apiFetch) |
 | /client/src/ws | socket.ts (Socket.io singleton) |
@@ -38,6 +54,7 @@ a puzzle together in real time. MVP is complete and production-ready.
 ## Established patterns
 
 ### Server
+- Server runs on PORT=3001 (default; set in server/.env)
 - All async Express routes use try/catch with next(err)
 - Zod validation on all REST request bodies before any DB access
 - JWT identity always from s.data.user.userId in WS handlers — never from client payload
@@ -75,6 +92,7 @@ Auto-numbering algorithm lives in client/src/utils/crosswordUtils.ts
 5. Never use console.log — import logger from server/src/logger.ts
 6. Write a DONE.md at the end of every session listing files created/modified
 7. Prefer Sonnet over Opus — only use Opus for genuinely ambiguous problems
+8. Never edit files directly on the VPS — all changes go through Git
 
 ## Key contracts
 - WS events + REST endpoints: /docs/contracts.md
