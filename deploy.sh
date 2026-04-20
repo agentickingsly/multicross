@@ -6,6 +6,7 @@ cd /var/www/multicross
 
 echo "=== Multicross Deploy ==="
 echo "--- Pulling latest code ---"
+git checkout -- .
 git pull origin main
 echo "--- Installing dependencies ---"
 npm install --production=false
