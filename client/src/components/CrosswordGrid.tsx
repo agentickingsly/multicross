@@ -294,8 +294,6 @@ export default function CrosswordGrid({
     const isCorrect = value && value.toUpperCase() === grid[row][col]?.toUpperCase();
 
     if (isSelected) return myColor + "88";
-    if (isCorrect) return "#bbf7d0"; // green-200
-    if (isHighlighted) return "#dbeafe"; // blue-100
     if (showContributions && value) {
       const filler = filledByMap.get(key);
       if (filler) {
@@ -303,6 +301,8 @@ export default function CrosswordGrid({
         if (color) return color + "88";
       }
     }
+    if (isCorrect) return "#bbf7d0"; // green-200
+    if (isHighlighted) return "#dbeafe"; // blue-100
     return "#fff";
   }
 
