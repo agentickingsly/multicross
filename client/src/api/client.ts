@@ -113,6 +113,19 @@ export function deletePuzzle(id: string): Promise<{ success: boolean }> {
 
 // ─── Games ────────────────────────────────────────────────────────────────────
 
+export interface ActiveGame {
+  id: string;
+  roomCode: string;
+  status: "waiting" | "active";
+  createdAt: string;
+  puzzleTitle: string;
+  participantCount: number;
+}
+
+export function getMyActiveGames(): Promise<{ games: ActiveGame[] }> {
+  return apiFetch<{ games: ActiveGame[] }>("/games/my-active");
+}
+
 export function getGame(gameId: string): Promise<GetGameResponse> {
   return apiFetch<GetGameResponse>(`/games/${gameId}`);
 }

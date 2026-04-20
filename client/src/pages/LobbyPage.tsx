@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Puzzle, User } from "@multicross/shared";
-import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle } from "../api/client";
+import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle, getMyActiveGames } from "../api/client";
+import type { ActiveGame } from "../api/client";
 
 const s: Record<string, React.CSSProperties> = {
   page: {
@@ -188,6 +189,42 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.875rem",
     padding: "0.5rem 0",
   },
+  activeGameCard: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0.85rem 1rem",
+    border: "1.5px solid #e2e8f0",
+    borderRadius: "8px",
+    background: "#f8fafc",
+    cursor: "pointer",
+    transition: "border-color 0.15s",
+  },
+  activeGameInfo: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "0.2rem",
+  },
+  activeGameTitle: {
+    fontWeight: "600",
+    color: "#1e293b",
+    fontSize: "0.95rem",
+  },
+  activeGameMeta: {
+    fontSize: "0.78rem",
+    color: "#64748b",
+  },
+  rejoinBtn: {
+    background: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    padding: "0.4rem 0.9rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.8rem",
+    flexShrink: 0,
+  },
 };
 
 function badgeStyle(status: "draft" | "published"): React.CSSProperties {
@@ -219,6 +256,9 @@ export default function LobbyPage() {
   const [mineError, setMineError] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
+  const [loadingActiveGames, setLoadingActiveGames] = useState(true);
+
   const currentUser: User | null = (() => {
     try {
       return JSON.parse(localStorage.getItem("multicross_user") ?? "null");
@@ -239,6 +279,18 @@ export default function LobbyPage() {
       .then(({ puzzles }) => setMyPuzzles(puzzles))
       .catch((err) => setMineError(err instanceof Error ? err.message : "Failed to load your puzzles"))
       .finally(() => setLoadingMine(false));
+  }, []);
+
+  useEffect(() => {
+    function fetchActiveGames() {
+      getMyActiveGames()
+        .then(({ games }) => setActiveGames(games))
+        .catch(() => {/* silently ignore — section just stays empty */})
+        .finally(() => setLoadingActiveGames(false));
+    }
+    fetchActiveGames();
+    const interval = setInterval(fetchActiveGames, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   function handleLogout() {
@@ -318,6 +370,45 @@ export default function LobbyPage() {
       </header>
 
       <div style={s.content}>
+        {/* My active games — only shown when the user has at least one, or while loading */}
+        {(loadingActiveGames || activeGames.length > 0) && (
+          <div style={s.section}>
+            <h2 style={s.sectionTitle}>My active games</h2>
+            {loadingActiveGames ? (
+              <div style={s.loading}>Loading…</div>
+            ) : (
+              <div style={s.puzzleList}>
+                {activeGames.map((game) => (
+                  <div
+                    key={game.id}
+                    style={s.activeGameCard}
+                    onClick={() => navigate(`/game/${game.id}`)}
+                  >
+                    <div style={s.activeGameInfo}>
+                      <div style={s.activeGameTitle}>{game.puzzleTitle}</div>
+                      <div style={s.activeGameMeta}>
+                        {game.participantCount} player{game.participantCount !== 1 ? "s" : ""}
+                        {" · "}
+                        <span style={{ textTransform: "capitalize" }}>{game.status}</span>
+                        {" · "}
+                        {new Date(game.createdAt).toLocaleDateString()}
+                        {" · "}
+                        Room {game.roomCode}
+                      </div>
+                    </div>
+                    <button
+                      style={s.rejoinBtn}
+                      onClick={(e) => { e.stopPropagation(); navigate(`/game/${game.id}`); }}
+                    >
+                      Rejoin
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* My puzzles */}
         <div style={s.section}>
           <div style={s.sectionHeader}>

@@ -43,7 +43,10 @@ Base path: `/api`
 | GET | `/puzzles/:id` | — | `{ puzzle: Puzzle }` |
 | POST | `/games` | `{ puzzleId: string }` | `{ game: Game }` |
 | POST | `/games/:id/join` | — | `{ participant: GameParticipant }` — 200 for new join or rejoin (idempotent) |
+| GET | `/games/my-active` | — | `{ games: ActiveGame[] }` — caller's non-complete games |
 | GET | `/games/:id` | — | `{ game: Game, participants: GameParticipant[], cells: GameCell[] }` |
+
+`ActiveGame`: `{ id, roomCode, status: "waiting"|"active", createdAt, puzzleTitle, participantCount: number }`
 
 All error responses: `{ error: string }` with appropriate HTTP status code.
 Protected routes (POST /games, POST /games/:id/join, GET /games/:id) require `Authorization: Bearer <token>` header.

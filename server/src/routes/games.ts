@@ -153,6 +153,42 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/games/my-active — games the current user is part of that aren't complete
+router.get("/my-active", requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const result = await pool.query(
+      `SELECT
+         g.id,
+         g.room_code,
+         g.status,
+         g.created_at,
+         p.title      AS puzzle_title,
+         COUNT(gp2.id)::int AS participant_count
+       FROM games g
+       JOIN game_participants gp  ON gp.game_id = g.id AND gp.user_id = $1
+       JOIN puzzles p             ON p.id = g.puzzle_id
+       JOIN game_participants gp2 ON gp2.game_id = g.id
+       WHERE g.status != 'complete'
+       GROUP BY g.id, g.room_code, g.status, g.created_at, p.title
+       ORDER BY g.created_at DESC`,
+      [userId]
+    );
+    res.json({
+      games: result.rows.map((r) => ({
+        id: r.id,
+        roomCode: r.room_code,
+        status: r.status,
+        createdAt: r.created_at,
+        puzzleTitle: r.puzzle_title,
+        participantCount: r.participant_count,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/games?roomCode=
 router.get("/", requireAuth, async (req, res, next) => {
   try {

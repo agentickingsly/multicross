@@ -119,3 +119,102 @@ describe("POST /api/games/:id/join", () => {
     expect(res.body).toHaveProperty("participant");
   });
 });
+
+describe("GET /api/games/my-active", () => {
+  let ownerToken: string;
+  let outsiderToken: string;
+  let activeGameId: string;
+  let completedGameId: string;
+
+  beforeAll(async () => {
+    // Register owner and outsider
+    const ownerRes = await request(app)
+      .post("/api/auth/register")
+      .send({ email: testEmail(), displayName: "Active Games Owner", password: "testpassword123" });
+    ownerToken = ownerRes.body.token;
+
+    const outsiderRes = await request(app)
+      .post("/api/auth/register")
+      .send({ email: testEmail(), displayName: "Active Games Outsider", password: "testpassword123" });
+    outsiderToken = outsiderRes.body.token;
+
+    // Create an active game (stays in 'waiting' status)
+    const activeRes = await request(app)
+      .post("/api/games")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ puzzleId: testPuzzleId });
+    activeGameId = activeRes.body.game.id;
+
+    // Create a game and mark it complete
+    const completedRes = await request(app)
+      .post("/api/games")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ puzzleId: testPuzzleId });
+    completedGameId = completedRes.body.game.id;
+    await pool.query(
+      `UPDATE games SET status = 'complete', completed_at = now() WHERE id = $1`,
+      [completedGameId]
+    );
+  });
+
+  it("returns 200 with correct shape", async () => {
+    const res = await request(app)
+      .get("/api/games/my-active")
+      .set("Authorization", `Bearer ${ownerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("games");
+    expect(Array.isArray(res.body.games)).toBe(true);
+  });
+
+  it("includes active games the user is part of", async () => {
+    const res = await request(app)
+      .get("/api/games/my-active")
+      .set("Authorization", `Bearer ${ownerToken}`);
+    const ids = res.body.games.map((g: { id: string }) => g.id);
+    expect(ids).toContain(activeGameId);
+  });
+
+  it("excludes completed games", async () => {
+    const res = await request(app)
+      .get("/api/games/my-active")
+      .set("Authorization", `Bearer ${ownerToken}`);
+    const ids = res.body.games.map((g: { id: string }) => g.id);
+    expect(ids).not.toContain(completedGameId);
+  });
+
+  it("excludes games the user never joined", async () => {
+    const res = await request(app)
+      .get("/api/games/my-active")
+      .set("Authorization", `Bearer ${outsiderToken}`);
+    const ids = res.body.games.map((g: { id: string }) => g.id);
+    expect(ids).not.toContain(activeGameId);
+  });
+
+  it("returns the expected fields on each game entry", async () => {
+    const res = await request(app)
+      .get("/api/games/my-active")
+      .set("Authorization", `Bearer ${ownerToken}`);
+    const game = res.body.games.find((g: { id: string }) => g.id === activeGameId);
+    expect(game).toBeDefined();
+    expect(game).toHaveProperty("id");
+    expect(game).toHaveProperty("roomCode");
+    expect(game).toHaveProperty("status");
+    expect(game).toHaveProperty("createdAt");
+    expect(game).toHaveProperty("puzzleTitle");
+    expect(game).toHaveProperty("participantCount");
+    expect(typeof game.participantCount).toBe("number");
+  });
+
+  it("returns empty array for user with no active games", async () => {
+    const res = await request(app)
+      .get("/api/games/my-active")
+      .set("Authorization", `Bearer ${outsiderToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.games).toHaveLength(0);
+  });
+
+  it("returns 401 without auth token", async () => {
+    const res = await request(app).get("/api/games/my-active");
+    expect(res.status).toBe(401);
+  });
+});
