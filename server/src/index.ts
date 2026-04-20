@@ -17,6 +17,7 @@ import gamesRouter from "./routes/games";
 import { registerWsHandlers } from "./ws/handlers";
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(helmet());
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173")
