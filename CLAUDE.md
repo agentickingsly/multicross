@@ -95,6 +95,7 @@ Always read the relevant skill files from .claude/skills/ before starting work:
 - .claude/skills/react-component.md — component structure, style conventions, state patterns
 - .claude/skills/crossword-domain.md — grid format, auto-numbering, puzzle rules
 - .claude/skills/vitest-testing.md — test setup, helpers, what to test
+- .claude/skills/multicross-gotchas.md — project gotchas: shared dist rebuild, ports, deploy chain, seed data, Redis members vs participants
 
-Read all four at the start of every session. They contain patterns that
+Read all five at the start of every session. They contain patterns that
 must be followed consistently across all sessions.
