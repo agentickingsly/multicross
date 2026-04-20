@@ -99,6 +99,11 @@ Always read the relevant skill files from .claude/skills/ before starting work:
 - .claude/skills/testing.md — when and how to write tests, mocking rules, coverage expectations
 - .claude/skills/code-review.md — self-review checklist to run before marking any task done
 - .claude/skills/security-performance.md — mandatory security and performance rules for all new code
+- .claude/skills/migrations.md — migration naming, local testing, Redis cleanup review, immutability rule
+- .claude/skills/deploy-checklist.md — pre-deploy verification: shared dist, env vars, VPS edit rules
+- .claude/skills/env-vars.md — all env vars, production rules for ALLOWED_ORIGINS and VITE_API_URL, how to add new vars
+- .claude/skills/git-workflow.md — branch roles, deploy steps, no-force-push and no-VPS-edit rules
+- .claude/skills/redis-keys.md — all Redis key patterns, permanent vs ephemeral, deleteGameKeys cleanup rules
 
-Read all eight at the start of every session. They contain patterns that
+Read all thirteen at the start of every session. They contain patterns that
 must be followed consistently across all sessions.

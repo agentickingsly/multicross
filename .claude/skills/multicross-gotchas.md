@@ -101,15 +101,14 @@ Helper functions live in `server/src/db/redis.ts`:
 - `addParticipant` / `removeParticipant` / `getParticipants`
 - `addMember` / `isMember`
 
+For the full Redis key catalog and rules for adding new keys, see `redis-keys.md`.
+
 ---
 
 ## 6. Migration numbering
 
-Migration files live in `server/src/db/migrations/` and must be named
-`NNN_description.sql` (zero-padded to 3 digits). The migrate runner applies
-them in filename order and records each in the `_migrations` table — they are
-**never re-run**. Current files: `001_initial_schema.sql`,
-`002_puzzle_authoring.sql`. Next migration must be `003_`.
+See `migrations.md` for the full naming convention, local testing steps, and immutability rule.
+Current files: `001_initial_schema.sql`, `002_puzzle_authoring.sql`. Next migration must be `003_`.
 
 ---
 

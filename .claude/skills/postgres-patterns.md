@@ -27,12 +27,10 @@ try {
 - Hard deletes only — no soft delete pattern
 
 ## Migration conventions
-- Files in server/src/db/migrations/
-- Named: 001_description.sql, 002_description.sql etc
+See `migrations.md` for naming, numbering, local testing, and the immutability rule.
 - Always use IF NOT EXISTS on CREATE TABLE
 - Always use IF NOT EXISTS on CREATE INDEX
 - Wrap ENUM creation in the duplicate_object exception block
-- Run with: npm run migrate
 
 ## Current schema summary
 users: id, email, display_name, password_hash, created_at

@@ -21,13 +21,20 @@ This is not optional. Work through each checklist item and fix anything found.
 - [ ] Client `catch` blocks set error state via `setError(...)` — never
       silently swallow errors
 
-### Input validation
+### Input validation & API contracts
 - [ ] Every new REST endpoint has a Zod schema that validates the request body
       before any DB or Redis access
 - [ ] Every new WS handler validates its payload with a Zod schema
 - [ ] UUIDs validated with `z.string().uuid()` — never assume a string is a
       valid UUID
 - [ ] No raw `req.params.id` passed directly to a query without validation
+- [ ] Auth-required endpoints derive user identity exclusively from `req.user`
+      (set by the JWT middleware) — never trust a userId from `req.body`,
+      `req.query`, or `req.params`
+- [ ] New literal-path route segments (e.g. `/games/my-active`) are registered
+      **before** wildcard/param routes (e.g. `/games/:id`) in the same router
+      file — Express matches routes in declaration order and will swallow the
+      literal as an ID otherwise
 
 ### Hardcoded values
 - [ ] No hardcoded URLs, ports, secrets, or environment-specific strings in
@@ -43,11 +50,18 @@ This is not optional. Work through each checklist item and fix anything found.
 
 ### TypeScript quality
 - [ ] No `any` — use `unknown` and narrow, or define an interface
+- [ ] No implicit `any` — all function parameters, return types, and variables
+      must be explicitly typed or provably inferred; never leave a parameter
+      untyped and let TypeScript silently widen it to `any`
 - [ ] No `as SomeType` casts without a comment explaining why it is safe
 - [ ] All function parameters and return types are either inferred correctly
       or explicitly annotated
 - [ ] `satisfies` used on style objects (`const s = { ... } satisfies
       Record<string, React.CSSProperties>`) — do not widen to `any`
+- [ ] Types shared between client and server live in `shared/src/types.ts` —
+      never redefine them locally in a route, component, or WS handler
+- [ ] If `shared/src/types.ts` was changed: `npm run build --workspace=shared`
+      has been run and `shared/dist/` is included in the same commit
 
 ### React / frontend specifics
 - [ ] No direct DOM manipulation — all state goes through `useState`
@@ -57,6 +71,33 @@ This is not optional. Work through each checklist item and fix anything found.
       — an empty `[]` that should list deps is worse than no memoisation
 - [ ] No inline object or function literals passed as props to components that
       re-render frequently (creates unnecessary re-renders)
+
+### WebSocket
+- [ ] New socket event payload types are added to `shared/src/types.ts`
+      (alongside `RoomJoinedPayload`, `ParticipantJoinedPayload`, etc.) —
+      never type them inline with an object literal in the handler
+- [ ] New WS events added to `shared/src/types.ts` are also documented in
+      `/docs/contracts.md` (hard rule #1)
+- [ ] Broadcasts target a specific room (`io.to(gameId).emit(...)`) —
+      never use a global `io.emit(...)` that would reach all connected clients
+
+### Redis
+- [ ] `members` (set of every userId who has ever joined a room, never cleared
+      on disconnect) and `participants` (set of currently connected userIds,
+      removed on disconnect) are kept strictly separate — do not read one when
+      you mean the other
+- [ ] Any new Redis key pattern introduced follows the `game:{gameId}:*`
+      convention and is wired into `deleteGameKeys(gameId)` in
+      `server/src/db/redis.ts` so it is cleaned up when a game ends
+
+### Testing
+- [ ] All DB calls in tests use the mocked pool — no test makes a real
+      PostgreSQL connection (real connections cause hangs in CI)
+- [ ] All Redis calls in tests use the mocked ioredis client — no test
+      connects to a real Redis instance
+- [ ] If a test times out, the first thing to check is unmocked async
+      dependencies (pool, redis, socket.io), not the timeout value — increase
+      the timeout only after confirming all external calls are mocked
 
 ## How to perform the review
 

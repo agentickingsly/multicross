@@ -5,13 +5,8 @@
 Write tests for every new feature and every modified code path. Tests are
 not optional — do not mark a task complete until tests exist and pass.
 
-## Stack
-
-- Vitest 2.x + supertest (server)
-- Config: `server/vitest.config.ts` (`singleFork: true` — tests run sequentially)
-- Run: `npm run test --workspace=server`
-- Watch: `npm run test --workspace=server -- --watch`
-- No client-side test runner is configured yet; server tests only for now.
+## Setup and helpers
+See `vitest-testing.md` for run commands, the `registerTestUser` helper, auth header helper, and CI config.
 
 ## Hard rule: never test against real infrastructure
 
@@ -74,11 +69,6 @@ If a module has no `__tests__/` subdirectory yet, create one.
 - Payload validation rejects malformed input
 - DB writes are called with correct arguments
 - Correct events are emitted to the right room/socket
-
-## Test email convention
-
-Always use `testuser+${randomUUID()}@test.multicross` — the cleanup in
-`afterAll` targets this pattern. Never use real emails.
 
 ## Before marking a task done
 

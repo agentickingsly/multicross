@@ -44,28 +44,8 @@ function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
 
-## What to test for each endpoint
-Happy path:
-  - Correct status code (200, 201)
-  - Response shape has expected fields
-
-Auth:
-  - 401 without Authorization header
-  - 401 with expired/invalid token
-
-Ownership:
-  - 403 when acting on another user's resource
-
-Validation:
-  - 400 for missing required fields
-  - 400 for fields failing Zod rules (too short, wrong format)
-
-Conflicts:
-  - 409 for duplicate unique fields (email, room_code)
-  - 409 for business logic conflicts (joining completed game)
-
-Not found:
-  - 404 for unknown IDs or room codes
+## What to test
+See `testing.md` for the full policy: what to cover per endpoint, mocking rules, and unit vs integration test distinction.
 
 ## Existing test files
 server/src/__tests__/gameLogic.test.ts — unit tests for generateRoomCode
