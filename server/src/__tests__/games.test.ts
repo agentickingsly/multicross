@@ -10,46 +10,66 @@ vi.mock("../db/redis", () => ({
 
 const testEmail = () => `testuser+${randomUUID()}@test.multicross`;
 
-let authToken: string;
-let testPuzzleId: string;
+async function purgeTestData() {
+  await pool.query(`DELETE FROM game_cells WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM game_participants WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM games WHERE created_by IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM puzzles WHERE author_id IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM users WHERE email LIKE '%@test.multicross'`);
+}
 
 beforeAll(async () => {
-  const res = await request(app)
-    .post("/api/auth/register")
-    .send({ email: testEmail(), displayName: "Games Test User", password: "testpassword123" });
-  authToken = res.body.token;
-
-  const result = await pool.query(
-    `INSERT INTO puzzles (title, author, width, height, grid, clues)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
-     RETURNING id`,
-    ["Test Puzzle", "Test Author", 5, 5, JSON.stringify([]), JSON.stringify({ across: [], down: [] })]
-  );
-  testPuzzleId = result.rows[0].id;
+  await purgeTestData();
 }, 15_000);
 
-afterAll(async () => {
-  if (testPuzzleId) {
-    // Delete in FK-safe order before removing the puzzle
-    await pool.query(
-      "DELETE FROM game_cells WHERE game_id IN (SELECT id FROM games WHERE puzzle_id = $1)",
-      [testPuzzleId]
-    );
-    await pool.query(
-      "DELETE FROM game_participants WHERE game_id IN (SELECT id FROM games WHERE puzzle_id = $1)",
-      [testPuzzleId]
-    );
-    await pool.query("DELETE FROM games WHERE puzzle_id = $1", [testPuzzleId]);
-    await pool.query("DELETE FROM puzzles WHERE id = $1", [testPuzzleId]);
-  }
-});
+// Never set — kept only so the afterAll guard below compiles unchanged
+let testPuzzleId: string;
 
+const validPuzzleBody = {
+  title: "Test Puzzle",
+  author: "Test Author",
+  width: 5,
+  height: 5,
+  grid: Array(5).fill(Array(5).fill("")),
+  clues: { across: { "1": "Across clue" }, down: { "1": "Down clue" } },
+  status: "published",
+};
+
+async function registerUser(displayName = "Games Test User") {
+  const res = await request(app)
+    .post("/api/auth/register")
+    .send({ email: testEmail(), displayName, password: "testpassword123" });
+  if (res.status !== 201) {
+    throw new Error(`registerUser failed: expected 201, got ${res.status}. Body: ${JSON.stringify(res.body)}`);
+  }
+  return { token: res.body.token as string, userId: res.body.user.id as string };
+}
+
+async function createPuzzle(token: string) {
+  const res = await request(app)
+    .post("/api/puzzles")
+    .set("Authorization", `Bearer ${token}`)
+    .send(validPuzzleBody);
+  if (res.status !== 201) {
+    throw new Error(`createPuzzle failed: expected 201, got ${res.status}. Body: ${JSON.stringify(res.body)}`);
+  }
+  return res.body.puzzle as { id: string };
+}
 describe("POST /api/games", () => {
+  let authToken: string;
+  let puzzleId: string;
+
+  beforeAll(async () => {
+    ({ token: authToken } = await registerUser("Post Games User"));
+    const puzzle = await createPuzzle(authToken);
+    puzzleId = puzzle.id;
+  });
+
   it("returns 201 with game and roomCode for authenticated user", async () => {
     const res = await request(app)
       .post("/api/games")
       .set("Authorization", `Bearer ${authToken}`)
-      .send({ puzzleId: testPuzzleId });
+      .send({ puzzleId });
     expect(res.status).toBe(201);
     expect(res.body).toHaveProperty("game");
     expect(res.body).toHaveProperty("roomCode");
@@ -59,19 +79,22 @@ describe("POST /api/games", () => {
   it("returns 401 without auth token", async () => {
     const res = await request(app)
       .post("/api/games")
-      .send({ puzzleId: testPuzzleId });
+      .send({ puzzleId });
     expect(res.status).toBe(401);
   });
 });
 
 describe("GET /api/games?roomCode=", () => {
+  let authToken: string;
   let roomCode: string;
 
   beforeAll(async () => {
+    ({ token: authToken } = await registerUser("Get Games User"));
+    const puzzle = await createPuzzle(authToken);
     const res = await request(app)
       .post("/api/games")
       .set("Authorization", `Bearer ${authToken}`)
-      .send({ puzzleId: testPuzzleId });
+      .send({ puzzleId: puzzle.id });
     roomCode = res.body.roomCode;
   });
 
@@ -92,14 +115,17 @@ describe("GET /api/games?roomCode=", () => {
 });
 
 describe("POST /api/games/:id/join", () => {
+  let authToken: string;
   let gameId: string;
   let secondUserToken: string;
 
   beforeAll(async () => {
+    ({ token: authToken } = await registerUser("Join Games Creator"));
+    const puzzle = await createPuzzle(authToken);
     const createRes = await request(app)
       .post("/api/games")
       .set("Authorization", `Bearer ${authToken}`)
-      .send({ puzzleId: testPuzzleId });
+      .send({ puzzleId: puzzle.id });
     gameId = createRes.body.game.id;
 
     const regRes = await request(app)
@@ -132,29 +158,22 @@ describe("GET /api/games/my-active", () => {
   let completedGameId: string;
 
   beforeAll(async () => {
-    // Register owner and outsider
-    const ownerRes = await request(app)
-      .post("/api/auth/register")
-      .send({ email: testEmail(), displayName: "Active Games Owner", password: "testpassword123" });
-    ownerToken = ownerRes.body.token;
-
-    const outsiderRes = await request(app)
-      .post("/api/auth/register")
-      .send({ email: testEmail(), displayName: "Active Games Outsider", password: "testpassword123" });
-    outsiderToken = outsiderRes.body.token;
+    ({ token: ownerToken } = await registerUser("Active Games Owner"));
+    ({ token: outsiderToken } = await registerUser("Active Games Outsider"));
+    const puzzle = await createPuzzle(ownerToken);
 
     // Create an active game (stays in 'waiting' status)
     const activeRes = await request(app)
       .post("/api/games")
       .set("Authorization", `Bearer ${ownerToken}`)
-      .send({ puzzleId: testPuzzleId });
+      .send({ puzzleId: puzzle.id });
     activeGameId = activeRes.body.game.id;
 
     // Create a game and mark it complete
     const completedRes = await request(app)
       .post("/api/games")
       .set("Authorization", `Bearer ${ownerToken}`)
-      .send({ puzzleId: testPuzzleId });
+      .send({ puzzleId: puzzle.id });
     completedGameId = completedRes.body.game.id;
     await pool.query(
       `UPDATE games SET status = 'complete', completed_at = now() WHERE id = $1`,
@@ -244,20 +263,14 @@ describe("PATCH /api/games/:id/abandon", () => {
   let gameId: string;
 
   beforeAll(async () => {
-    const creatorRes = await request(app)
-      .post("/api/auth/register")
-      .send({ email: testEmail(), displayName: "Abandon Creator", password: "testpassword123" });
-    creatorToken = creatorRes.body.token;
-
-    const nonCreatorRes = await request(app)
-      .post("/api/auth/register")
-      .send({ email: testEmail(), displayName: "Abandon Non-Creator", password: "testpassword123" });
-    nonCreatorToken = nonCreatorRes.body.token;
+    ({ token: creatorToken } = await registerUser("Abandon Creator"));
+    ({ token: nonCreatorToken } = await registerUser("Abandon Non-Creator"));
+    const puzzle = await createPuzzle(creatorToken);
 
     const createRes = await request(app)
       .post("/api/games")
       .set("Authorization", `Bearer ${creatorToken}`)
-      .send({ puzzleId: testPuzzleId });
+      .send({ puzzleId: puzzle.id });
     gameId = createRes.body.game.id;
   });
 

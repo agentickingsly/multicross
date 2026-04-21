@@ -1,8 +1,21 @@
 import request from "supertest";
 import { randomUUID } from "crypto";
 import { app } from "../index";
+import pool from "../db/pool";
 
 const testEmail = () => `testuser+${randomUUID()}@test.multicross`;
+
+async function purgeTestData() {
+  await pool.query(`DELETE FROM game_cells WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM game_participants WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM games WHERE created_by IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM puzzles WHERE author_id IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM users WHERE email LIKE '%@test.multicross'`);
+}
+
+beforeAll(async () => {
+  await purgeTestData();
+}, 15_000);
 
 describe("POST /api/auth/register", () => {
   it("returns 201 with user and token for valid input", async () => {

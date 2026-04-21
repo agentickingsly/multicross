@@ -12,11 +12,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./src/__tests__/setup.ts"],
+    include: ["src/__tests__/**/*.test.ts"],
+    exclude: ["dist/**", "node_modules/**"],
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    fileParallelism: false,
   },
 });

@@ -10,6 +10,18 @@ vi.mock("../db/redis", () => ({
 
 const testEmail = () => `testuser+${randomUUID()}@test.multicross`;
 
+async function purgeTestData() {
+  await pool.query(`DELETE FROM game_cells WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM game_participants WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM games WHERE created_by IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM puzzles WHERE author_id IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM users WHERE email LIKE '%@test.multicross'`);
+}
+
+beforeAll(async () => {
+  await purgeTestData();
+}, 15_000);
+
 const validBody = {
   title: "Test Puzzle",
   author: "Test Author",
@@ -24,6 +36,9 @@ async function registerUser(displayName = "Puzzle Test User") {
   const res = await request(app)
     .post("/api/auth/register")
     .send({ email: testEmail(), displayName, password: "testpassword123" });
+  if (res.status !== 201) {
+    throw new Error(`registerUser failed: expected 201, got ${res.status}. Body: ${JSON.stringify(res.body)}`);
+  }
   return { token: res.body.token as string, userId: res.body.user.id as string };
 }
 
@@ -32,6 +47,12 @@ async function createPuzzle(token: string, overrides: Record<string, unknown> = 
     .post("/api/puzzles")
     .set("Authorization", `Bearer ${token}`)
     .send({ ...validBody, ...overrides });
+  if (res.status !== 201) {
+    throw new Error(`createPuzzle failed: expected 201, got ${res.status}. Body: ${JSON.stringify(res.body)}`);
+  }
+  if (!res.body.puzzle) {
+    throw new Error(`createPuzzle failed: res.body.puzzle is missing. Body: ${JSON.stringify(res.body)}`);
+  }
   return res.body.puzzle as { id: string; authorId: string; status: string; [key: string]: unknown };
 }
 

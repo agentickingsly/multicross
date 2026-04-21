@@ -17,19 +17,37 @@ let testPuzzleId: string;
 // IDs of games created in each test; collected for cleanup
 const createdGameIds: string[] = [];
 
+async function purgeTestData() {
+  await pool.query(`DELETE FROM game_cells WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM game_participants WHERE game_id IN (SELECT g.id FROM games g JOIN users u ON u.id = g.created_by WHERE u.email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM games WHERE created_by IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM puzzles WHERE author_id IN (SELECT id FROM users WHERE email LIKE '%@test.multicross')`);
+  await pool.query(`DELETE FROM users WHERE email LIKE '%@test.multicross'`);
+}
+
 beforeAll(async () => {
+  await purgeTestData();
   const res = await request(app)
     .post("/api/auth/register")
     .send({ email: testEmail(), displayName: "Expiry Test User", password: "testpassword123" });
+  if (res.status !== 201) {
+    throw new Error(`register failed: expected 201, got ${res.status}. Body: ${JSON.stringify(res.body)}`);
+  }
   authToken = res.body.token;
   userId = res.body.user.id;
 
-  const result = await pool.query(
-    `INSERT INTO puzzles (title, author, width, height, grid, clues)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
-     RETURNING id`,
-    ["Expiry Test Puzzle", "Test Author", 5, 5, JSON.stringify([]), JSON.stringify({ across: [], down: [] })]
-  );
+  let result;
+  try {
+    result = await pool.query(
+      `INSERT INTO puzzles (title, author, author_id, width, height, grid, clues)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+       RETURNING id`,
+      ["Expiry Test Puzzle", "Test Author", userId, 5, 5, JSON.stringify([]), JSON.stringify({ across: [], down: [] })]
+    );
+  } catch (err) {
+    throw new Error(`puzzle INSERT failed: ${(err as Error).message}`);
+  }
+  if (!result.rows[0]) throw new Error("puzzle INSERT returned no rows");
   testPuzzleId = result.rows[0].id;
 }, 15_000);
 
