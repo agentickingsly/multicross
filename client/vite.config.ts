@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       "@multicross/shared": path.resolve(__dirname, "../shared/src/types"),
     },
+    dedupe: ["react", "react-dom"],
   },
   server: {
     port: 5173,
