@@ -14,6 +14,8 @@ interface Props {
   currentUserId: string;
   cursors?: Record<string, CursorPos>; // userId → position
   showContributions?: boolean;
+  showColors?: boolean;
+  lockCorrect?: boolean;
   onCellFill: (row: number, col: number, value: string) => void;
   onCursorMove: (row: number, col: number) => void;
 }
@@ -80,6 +82,8 @@ export default function CrosswordGrid({
   currentUserId,
   cursors = {},
   showContributions = false,
+  showColors = true,
+  lockCorrect = false,
   onCellFill,
   onCursorMove,
 }: Props) {
@@ -128,6 +132,12 @@ export default function CrosswordGrid({
     participants.forEach(p => map.set(p.userId, p.color));
     return map;
   }, [participants]);
+
+  function isCellLocked(row: number, col: number): boolean {
+    if (!lockCorrect) return false;
+    const value = cellValueMap.get(`${row},${col}`);
+    return !!(value && value.toUpperCase() === grid[row][col]?.toUpperCase());
+  }
 
   // ── Navigation helpers ──────────────────────────────────────────────────────
 
@@ -243,6 +253,7 @@ export default function CrosswordGrid({
 
     if (e.key === "Backspace") {
       e.preventDefault();
+      if (isCellLocked(row, col)) return;
       const existing = cellValueMap.get(`${row},${col}`);
       if (existing) {
         onCellFill(row, col, "");
@@ -259,6 +270,7 @@ export default function CrosswordGrid({
 
     if (e.key.length === 1 && /[a-zA-Z]/.test(e.key)) {
       e.preventDefault();
+      if (isCellLocked(row, col)) return;
       const letter = e.key.toUpperCase();
       onCellFill(row, col, letter);
       const next = nextWhiteCell(row, col, direction);
@@ -282,6 +294,7 @@ export default function CrosswordGrid({
     (e.target as HTMLInputElement).value = "";
     if (!selected || !char || !/[a-zA-Z]/.test(char)) return;
     const { row, col } = selected;
+    if (isCellLocked(row, col)) return;
     onCellFill(row, col, char.toUpperCase());
     const next = nextWhiteCell(row, col, direction);
     if (next) {
@@ -323,7 +336,7 @@ export default function CrosswordGrid({
         if (color) return color + "88";
       }
     }
-    if (isCorrect) return "#bbf7d0"; // green-200
+    if (isCorrect && showColors) return "#bbf7d0"; // green-200
     if (isHighlighted) return "#dbeafe"; // blue-100
     return "#fff";
   }

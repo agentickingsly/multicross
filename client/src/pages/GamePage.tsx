@@ -56,6 +56,8 @@ export default function GamePage() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [showContributions, setShowContributions] = useState(false);
+  const [showColors, setShowColors] = useState(true);
+  const [lockCorrect, setLockCorrect] = useState(false);
   const [abandonLoading, setAbandonLoading] = useState(false);
   const startTimeRef = useRef<number>(Date.now());
 
@@ -294,6 +296,28 @@ export default function GamePage() {
       fontSize: "0.75rem",
       transition: "background 0.2s",
     },
+    colorToggleBtn: {
+      background: showColors ? "rgba(34,197,94,0.3)" : "none",
+      color: "#fff",
+      border: `1px solid ${showColors ? "rgba(34,197,94,0.7)" : "rgba(255,255,255,0.4)"}`,
+      borderRadius: "6px",
+      padding: "0 0.6rem",
+      minHeight: "44px",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s, border-color 0.2s",
+    },
+    lockToggleBtn: {
+      background: lockCorrect ? "rgba(251,191,36,0.3)" : "none",
+      color: "#fff",
+      border: `1px solid ${lockCorrect ? "rgba(251,191,36,0.7)" : "rgba(255,255,255,0.4)"}`,
+      borderRadius: "6px",
+      padding: "0 0.6rem",
+      minHeight: "44px",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s, border-color 0.2s",
+    },
     content: {
       maxWidth: "980px",
       margin: "0 auto",
@@ -433,6 +457,12 @@ export default function GamePage() {
           <button style={s.copyBtn} onClick={handleCopyRoomCode}>
             {copied ? "Copied!" : "Copy"}
           </button>
+          <button style={s.colorToggleBtn} onClick={() => setShowColors(prev => !prev)}>
+            {showColors ? "Colors" : "No Colors"}
+          </button>
+          <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => !prev)}>
+            {lockCorrect ? "Unlock" : "Lock"}
+          </button>
           <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
             {showContributions ? "Hide contributions" : "Show contributions"}
           </button>
@@ -457,6 +487,8 @@ export default function GamePage() {
             currentUserId={currentUser?.id ?? ""}
             cursors={cursors}
             showContributions={showContributions}
+            showColors={showColors}
+            lockCorrect={lockCorrect}
             onCellFill={handleCellFill}
             onCursorMove={handleCursorMove}
           />
