@@ -112,6 +112,16 @@ Current files: `001_initial_schema.sql`, `002_puzzle_authoring.sql`. Next migrat
 
 ---
 
+## 8. Stale Vite pre-bundle cache after React/Vite upgrades
+
+After any dependency upgrade involving React, ReactDOM, or Vite:
+
+- **Delete `client/node_modules/.vite/deps/`** before running the dev server — this forces Vite to regenerate its pre-bundle cache from the actually-installed packages.
+- A stale cache causes `Cannot read properties of null (reading 'useRef')` at startup because Vite serves cached React 18 bindings while `react-dom` internals expect React 19's hook dispatcher format.
+- `vite.config.ts` has `resolve.dedupe: ["react", "react-dom"]` to prevent version-split issues from nested dependencies (e.g. react-router-dom bundling its own React copy) — **do not remove this**.
+
+---
+
 ## 7. Docker Compose is for local infra only
 
 `docker-compose.yml` starts Postgres 16 and Redis 7. It does **not** run the
