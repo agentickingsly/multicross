@@ -1,4 +1,12 @@
+import pool from "../db/pool";
 import { generateRoomCode } from "../routes/games";
+
+vi.mock("../db/redis", () => ({
+  pub: { publish: vi.fn().mockResolvedValue(0) },
+  deleteGameKeys: vi.fn().mockResolvedValue(undefined),
+}));
+
+afterAll(() => pool.end());
 
 const ALLOWED_CHARS = new Set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789".split(""));
 
