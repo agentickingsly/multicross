@@ -39,6 +39,7 @@ export default function PuzzleEditor({
   const [direction, setDirection] = useState<"across" | "down">("across");
   const [errors, setErrors] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
 
   const { grid, height, width } = puzzle;
 
@@ -82,7 +83,7 @@ export default function PuzzleEditor({
     } else {
       // Unselected white cell → select it
       setSelected({ row: r, col: c });
-      containerRef.current?.focus();
+      hiddenInputRef.current?.focus();
     }
   }
 
@@ -183,6 +184,41 @@ export default function PuzzleEditor({
       const next = nextWhite(selR, selC, direction);
       if (next) setSelected(next);
     }
+  }
+
+  // ── Hidden input (mobile keyboard) ───────────────────────────────────────
+  // Keydown events from the hidden input bubble to containerRef's onKeyDown handler,
+  // covering arrows/backspace/tab on desktop. This onInput handler catches Android
+  // letter input (key "Unidentified") and Android backspace (deleteContentBackward).
+  function handleHiddenInput(e: React.FormEvent<HTMLInputElement>) {
+    const nativeEvent = e.nativeEvent as InputEvent;
+    (e.target as HTMLInputElement).value = "";
+
+    if (nativeEvent.inputType === "deleteContentBackward") {
+      if (!selected) return;
+      const { row: selR, col: selC } = selected;
+      const newGrid = grid.map((gridRow) => [...gridRow]);
+      if (newGrid[selR][selC] === "") {
+        const prev = prevWhite(selR, selC, direction);
+        if (prev) {
+          newGrid[prev.row][prev.col] = "";
+          setSelected(prev);
+        }
+      } else {
+        newGrid[selR][selC] = "";
+      }
+      onChange({ ...puzzle, grid: newGrid });
+      return;
+    }
+
+    const char = nativeEvent.data;
+    if (!selected || !char || !/[a-zA-Z]/.test(char)) return;
+    const { row: selR, col: selC } = selected;
+    const newGrid = grid.map((gridRow) => [...gridRow]);
+    newGrid[selR][selC] = char.toUpperCase();
+    onChange({ ...puzzle, grid: newGrid });
+    const next = nextWhite(selR, selC, direction);
+    if (next) setSelected(next);
   }
 
   // ── Clue editing ──────────────────────────────────────────────────────────
@@ -292,7 +328,7 @@ export default function PuzzleEditor({
           ref={containerRef}
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          style={{ outline: "none", flexShrink: 0 }}
+          style={{ outline: "none", flexShrink: 0, position: "relative" }}
         >
           <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginBottom: "0.4rem" }}>
             Click white = select · click selected = black · click black = white · Space = toggle · type letters
@@ -374,6 +410,32 @@ export default function PuzzleEditor({
               })
             )}
           </div>
+
+          {/* Hidden input — triggers the native keyboard on mobile. Must not use
+              display:none (prevents focus). Keydown bubbles to containerRef's handler;
+              onInput catches Android letter/backspace input. */}
+          <input
+            ref={hiddenInputRef}
+            type="text"
+            inputMode="text"
+            aria-hidden="true"
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck={false}
+            onInput={handleHiddenInput}
+            style={{
+              position: "absolute",
+              left: "-9999px",
+              top: 0,
+              width: "1px",
+              height: "1px",
+              opacity: 0,
+              fontSize: "16px",
+              border: "none",
+              padding: 0,
+            }}
+          />
         </div>
 
         {/* Clue inputs */}
