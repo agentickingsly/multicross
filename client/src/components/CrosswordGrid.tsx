@@ -91,7 +91,6 @@ export default function CrosswordGrid({
 
   const [selected, setSelected] = useState<CursorPos | null>(null);
   const [direction, setDirection] = useState<Direction>("across");
-  const [highlightedCells, setHighlightedCells] = useState<Set<string>>(new Set());
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
@@ -147,6 +146,26 @@ export default function CrosswordGrid({
     return map;
   }, [participants]);
 
+  const activeWordCells = useMemo((): Set<string> => {
+    if (!selected) return new Set();
+    const { row, col } = selected;
+    const result = new Set<string>();
+    if (direction === "across") {
+      let startCol = col;
+      while (startCol > 0 && grid[row][startCol - 1] !== null) startCol--;
+      for (let c = startCol; c < width && grid[row][c] !== null; c++) {
+        result.add(`${row},${c}`);
+      }
+    } else {
+      let startRow = row;
+      while (startRow > 0 && grid[startRow - 1][col] !== null) startRow--;
+      for (let r = startRow; r < height && grid[r][col] !== null; r++) {
+        result.add(`${r},${col}`);
+      }
+    }
+    return result;
+  }, [selected, direction, grid, width, height]);
+
   function isCellLocked(row: number, col: number): boolean {
     if (!lockCorrect) return false;
     const value = cellValueMap.get(`${row},${col}`);
@@ -201,7 +220,6 @@ export default function CrosswordGrid({
   // ── Clue selection ──────────────────────────────────────────────────────────
 
   function selectClue(clueCells: [number, number][], dir: Direction) {
-    setHighlightedCells(new Set(clueCells.map(([r, c]) => `${r},${c}`)));
     if (clueCells.length > 0) {
       setSelected({ row: clueCells[0][0], col: clueCells[0][1] });
       setDirection(dir);
@@ -221,7 +239,6 @@ export default function CrosswordGrid({
       setSelected({ row, col });
       onCursorMove(row, col);
     }
-    setHighlightedCells(new Set());
     hiddenInputRef.current?.focus();
   }
 
@@ -360,7 +377,7 @@ export default function CrosswordGrid({
     if (grid[row][col] === null) return "#1a1a1a";
     const key = `${row},${col}`;
     const isSelected = selected?.row === row && selected?.col === col;
-    const isHighlighted = highlightedCells.has(key);
+    const isInActiveWord = activeWordCells.has(key);
     const value = cellValueMap.get(key);
     const isCorrect = value && value.toUpperCase() === grid[row][col]?.toUpperCase();
 
@@ -373,7 +390,7 @@ export default function CrosswordGrid({
       }
     }
     if (isCorrect && showColors) return "#bbf7d0"; // green-200
-    if (isHighlighted) return "#dbeafe"; // blue-100
+    if (isInActiveWord) return "#dbeafe"; // blue-100 word highlight
     return "#fff";
   }
 
