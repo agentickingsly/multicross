@@ -64,7 +64,7 @@ app.use("/api/games", gamesRouter);
 if (process.env.NODE_ENV === "production") {
   const clientDist = path.join(__dirname, "../../client/dist");
   app.use(express.static(clientDist));
-  app.get("*", (req, res) => {
+  app.get("/{*path}", (req, res) => {
     if (!req.path.startsWith("/api") && !req.path.startsWith("/socket.io")) {
       res.sendFile(path.join(clientDist, "index.html"));
     }
