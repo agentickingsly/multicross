@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useWindowWidth } from "../utils/useWindowWidth";
 import { useNavigate } from "react-router-dom";
 import type { Puzzle, User } from "@multicross/shared";
 import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle, getMyActiveGames, abandonGame } from "../api/client";
@@ -94,6 +95,8 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: "0.5rem",
     padding: "1rem",
     border: "1.5px solid #e2e8f0",
     borderRadius: "8px",
@@ -193,6 +196,8 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: "0.5rem",
     padding: "0.85rem 1rem",
     border: "1.5px solid #e2e8f0",
     borderRadius: "8px",
@@ -253,6 +258,8 @@ function badgeStyle(status: "draft" | "published"): React.CSSProperties {
 
 export default function LobbyPage() {
   const navigate = useNavigate();
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth <= 640;
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [loadingPuzzles, setLoadingPuzzles] = useState(true);
   const [puzzleError, setPuzzleError] = useState("");
@@ -386,10 +393,12 @@ export default function LobbyPage() {
       <header style={s.header}>
         <div style={s.headerTitle}>Multicross</div>
         <div style={s.headerRight}>
-          <span>Hey, {currentUser?.displayName ?? "Player"}</span>
-          <button style={s.createPuzzleLink} onClick={() => navigate("/editor")}>
-            Create puzzle
-          </button>
+          {!isMobile && <span>Hey, {currentUser?.displayName ?? "Player"}</span>}
+          {!isMobile && (
+            <button style={s.createPuzzleLink} onClick={() => navigate("/editor")}>
+              Create puzzle
+            </button>
+          )}
           <button style={s.logoutBtn} onClick={handleLogout}>
             Log out
           </button>

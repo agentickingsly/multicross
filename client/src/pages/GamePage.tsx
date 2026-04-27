@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useWindowWidth } from "../utils/useWindowWidth";
 import { useParams, useNavigate } from "react-router-dom";
 import type {
   Game,
@@ -238,6 +239,9 @@ export default function GamePage() {
     return p.displayName ?? `Player ${p.userId.slice(-4)}`;
   }
 
+  const windowWidth = useWindowWidth();
+  const isMobile = windowWidth <= 640;
+
   // ── Styles ──────────────────────────────────────────────────────────────────
 
   const s: Record<string, React.CSSProperties> = {
@@ -249,11 +253,14 @@ export default function GamePage() {
     header: {
       background: "#1e3a5f",
       color: "#fff",
-      padding: "0 1.5rem",
-      height: "56px",
+      padding: isMobile ? "0.5rem 1rem" : "0 1.5rem",
+      minHeight: "56px",
+      height: "auto",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: "0.5rem",
     },
     headerLeft: { display: "flex", alignItems: "center", gap: "1rem" },
     backBtn: {
@@ -321,7 +328,7 @@ export default function GamePage() {
     content: {
       maxWidth: "980px",
       margin: "0 auto",
-      padding: "1.5rem",
+      padding: isMobile ? "1rem" : "1.5rem",
       display: "flex",
       gap: "1.5rem",
       flexWrap: "wrap",
@@ -334,7 +341,7 @@ export default function GamePage() {
       boxShadow: "0 1px 8px rgba(0,0,0,0.07)",
     },
     sidebar: {
-      width: "200px",
+      width: isMobile ? "100%" : "200px",
       display: "flex",
       flexDirection: "column",
       gap: "1rem",

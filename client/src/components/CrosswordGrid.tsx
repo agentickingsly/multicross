@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import type { Puzzle, GameCell, GameParticipant } from "@multicross/shared";
 import { computeCellNumbers } from "../utils/crosswordUtils";
 
@@ -92,12 +92,26 @@ export default function CrosswordGrid({
   const [selected, setSelected] = useState<CursorPos | null>(null);
   const [direction, setDirection] = useState<Direction>("across");
   const [highlightedCells, setHighlightedCells] = useState<Set<string>>(new Set());
+  const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
 
   // Keep focus on container so keyboard events fire
   useEffect(() => {
     containerRef.current?.focus();
+  }, []);
+
+  // Dynamic cell sizing — measure container before first paint, then watch for resize
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerWidth(el.offsetWidth);
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setContainerWidth(Math.floor(entry.contentRect.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   const cellNumbers = useMemo(
@@ -290,9 +304,30 @@ export default function CrosswordGrid({
   // `input` event entirely, so there is no double-handling.
   function handleHiddenInput(e: React.FormEvent<HTMLInputElement>) {
     const nativeEvent = e.nativeEvent as InputEvent;
-    const char = nativeEvent.data;
     // Always clear to prevent text accumulation in the hidden input.
     (e.target as HTMLInputElement).value = "";
+
+    // Android backspace arrives as deleteContentBackward (keydown key is "Unidentified")
+    if (nativeEvent.inputType === "deleteContentBackward") {
+      if (!selected) return;
+      const { row, col } = selected;
+      if (isCellLocked(row, col)) return;
+      const existing = cellValueMap.get(`${row},${col}`);
+      if (existing) {
+        onCellFill(row, col, "");
+      } else {
+        const prev = prevWhiteCell(row, col, direction);
+        if (prev) {
+          if (isCellLocked(prev.row, prev.col)) return;
+          setSelected(prev);
+          onCellFill(prev.row, prev.col, "");
+          onCursorMove(prev.row, prev.col);
+        }
+      }
+      return;
+    }
+
+    const char = nativeEvent.data;
     if (!selected || !char || !/[a-zA-Z]/.test(char)) return;
     const { row, col } = selected;
     if (isCellLocked(row, col)) return;
@@ -363,7 +398,10 @@ export default function CrosswordGrid({
 
   // ── Styles ──────────────────────────────────────────────────────────────────
 
-  const CELL_SIZE = Math.min(52, Math.floor(440 / Math.max(width, height)));
+  // Fit grid within the available container width; fall back to 440-based calc before first measure
+  const CELL_SIZE = containerWidth > 0
+    ? Math.min(52, Math.max(20, Math.floor((containerWidth - 2 * width - 6) / width)))
+    : Math.min(52, Math.max(20, Math.floor(440 / Math.max(width, height))));
 
   const containerStyle: React.CSSProperties = {
     position: "relative",
@@ -389,8 +427,6 @@ export default function CrosswordGrid({
   const clueColumnStyle: React.CSSProperties = {
     flex: 1,
     minWidth: "220px",
-    maxHeight: `${height * (CELL_SIZE + 2) + 20}px`,
-    overflowY: "auto",
     display: "flex",
     flexDirection: "column",
     gap: "1.25rem",
@@ -424,7 +460,7 @@ export default function CrosswordGrid({
             return (
               <div
                 key={key}
-                onClick={() => handleCellClick(r, c)}
+                onPointerDown={(e) => { e.preventDefault(); handleCellClick(r, c); }}
                 style={{
                   width: CELL_SIZE,
                   height: CELL_SIZE,

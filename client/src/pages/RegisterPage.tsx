@@ -9,6 +9,7 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     background: "#f1f5f9",
+    padding: "1rem",
   },
   card: {
     background: "#fff",
@@ -40,7 +41,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: "0.6rem 0.75rem",
     borderRadius: "6px",
     border: "1.5px solid #cbd5e1",
-    fontSize: "1rem",
+    fontSize: "16px",
     outline: "none",
   },
   btn: {
@@ -52,6 +53,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "1rem",
     fontWeight: "600",
     cursor: "pointer",
+    minHeight: "44px",
   },
   error: {
     color: "#dc2626",
