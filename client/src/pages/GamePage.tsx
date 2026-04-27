@@ -457,11 +457,11 @@ export default function GamePage() {
           <button style={s.copyBtn} onClick={handleCopyRoomCode}>
             {copied ? "Copied!" : "Copy"}
           </button>
-          <button style={s.colorToggleBtn} onClick={() => setShowColors(prev => !prev)}>
-            {showColors ? "Colors" : "No Colors"}
+          <button style={s.colorToggleBtn} onClick={() => setShowColors(prev => !prev)} title="Highlight correct letters in green">
+            {showColors ? "Check" : "Check off"}
           </button>
-          <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => !prev)}>
-            {lockCorrect ? "Unlock" : "Lock"}
+          <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => !prev)} title="Prevent correct letters from being overwritten">
+            {lockCorrect ? "Protect" : "Protect off"}
           </button>
           <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
             {showContributions ? "Hide contributions" : "Show contributions"}
