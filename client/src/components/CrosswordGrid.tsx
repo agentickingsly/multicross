@@ -260,6 +260,7 @@ export default function CrosswordGrid({
       } else {
         const prev = prevWhiteCell(row, col, direction);
         if (prev) {
+          if (isCellLocked(prev.row, prev.col)) return;
           setSelected(prev);
           onCellFill(prev.row, prev.col, "");
           onCursorMove(prev.row, prev.col);
