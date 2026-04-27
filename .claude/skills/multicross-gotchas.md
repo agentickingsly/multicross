@@ -122,6 +122,20 @@ After any dependency upgrade involving React, ReactDOM, or Vite:
 
 ---
 
+## 9. Express 5 wildcard route syntax
+
+Express 5 does not support bare `*` wildcards in route paths — using
+`app.get('*', ...)` or `app.use('*', ...)` throws
+`PathError: Missing parameter name` at startup.
+
+Use `/{*path}` instead — e.g. `app.get('/{*path}', ...)` for the SPA
+catch-all route.
+
+This affects any wildcard route, not just the catch-all — check all routes
+when upgrading from Express 4.
+
+---
+
 ## 7. Docker Compose is for local infra only
 
 `docker-compose.yml` starts Postgres 16 and Redis 7. It does **not** run the
