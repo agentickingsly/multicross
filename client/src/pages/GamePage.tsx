@@ -6,6 +6,7 @@ import type {
   Puzzle,
   GameParticipant,
   GameCell,
+  GameMove,
   User,
   GameCompletePayload,
   GameAbandonedPayload,
@@ -16,9 +17,11 @@ import type {
   RoomJoinedPayload,
 } from "@multicross/shared";
 import type { PuzzleStats } from "@multicross/shared";
-import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle } from "../api/client";
+import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory } from "../api/client";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
+import ReplayControls from "../components/ReplayControls";
+import { useReplay } from "../hooks/useReplay";
 
 interface CursorPos {
   row: number;
@@ -77,6 +80,8 @@ export default function GamePage() {
     }
   })();
 
+  // ── Core game state ──────────────────────────────────────────────────────────
+
   const [game, setGame] = useState<Game | null>(null);
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [participants, setParticipants] = useState<ParticipantWithName[]>([]);
@@ -84,74 +89,123 @@ export default function GamePage() {
   const [cursors, setCursors] = useState<Record<string, CursorPos>>({});
   const [completion, setCompletion] = useState<GameCompletePayload | null>(null);
   const [gameEnded, setGameEnded] = useState<{ status: "abandoned" | "expired" } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const startTimeRef = useRef<number>(Date.now());
+
+  // ── WS lifecycle flag ────────────────────────────────────────────────────────
+  // null = loading, false = game is over (no WS), true = game is live (WS active)
+  const [isLiveGame, setIsLiveGame] = useState<boolean | null>(null);
+
+  // ── View mode (read-only completed puzzle) ──────────────────────────────────
+  const [viewMode, setViewMode] = useState(false);
+  const [historyMoves, setHistoryMoves] = useState<GameMove[]>([]);
+  const [historyHasFull, setHistoryHasFull] = useState(false);
+  const [replayActive, setReplayActive] = useState(false);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replayError, setReplayError] = useState("");
+
+  // ── Header UI state ──────────────────────────────────────────────────────────
+  const [copied, setCopied] = useState(false);
+  const [showContributions, setShowContributions] = useState(false);
+  const [showColors, setShowColors] = useState(true);
+  const [lockCorrect, setLockCorrect] = useState(false);
+  const [abandonLoading, setAbandonLoading] = useState(false);
+
+  // ── Rating state ─────────────────────────────────────────────────────────────
   const [ratingDifficulty, setRatingDifficulty] = useState<number | null>(null);
   const [ratingEnjoyment, setRatingEnjoyment] = useState<number | null>(null);
   const [ratingStats, setRatingStats] = useState<PuzzleStats | null>(null);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [ratingLoading, setRatingLoading] = useState(false);
   const [ratingError, setRatingError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [showContributions, setShowContributions] = useState(false);
-  const [showColors, setShowColors] = useState(true);
-  const [lockCorrect, setLockCorrect] = useState(false);
-  const [abandonLoading, setAbandonLoading] = useState(false);
-  const startTimeRef = useRef<number>(Date.now());
 
-  // Load game + puzzle
+  // ── Replay ───────────────────────────────────────────────────────────────────
+  const {
+    replayCells,
+    currentStep: replayCurrentStep,
+    totalSteps: replayTotalSteps,
+    playing: replayPlaying,
+    speed: replaySpeed,
+    play: replayPlay,
+    pause: replayPause,
+    setSpeed: setReplaySpeed,
+    reset: replayReset,
+  } = useReplay(historyMoves, gameId ?? "");
+
+  // ── Effect 1: load game data (REST only — no WS) ────────────────────────────
   useEffect(() => {
     if (!gameId) return;
-    const token = localStorage.getItem("multicross_token") ?? "";
-    ws.connect(token);
+    let cancelled = false;
 
     getGame(gameId)
       .then(async ({ game, participants, cells }) => {
+        if (cancelled) return;
         setGame(game);
         setParticipants(participants as ParticipantWithName[]);
         setCells(cells);
-        // If the game already finished while we were away, show the appropriate end state
+
         if (game.status === "complete") {
-          setCompletion({ completedAt: game.completedAt!, stats: [] });
+          setViewMode(true);
+          setIsLiveGame(false);
         } else if (game.status === "abandoned" || game.status === "expired") {
           setGameEnded({ status: game.status });
+          setIsLiveGame(false);
+        } else {
+          setIsLiveGame(true);
         }
-        const { puzzle } = await getPuzzle(game.puzzleId);
-        setPuzzle(puzzle);
-        startTimeRef.current = Date.now();
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
 
-    return () => {
-      if (currentUser) {
-        ws.emit("leave_room", { gameId, userId: currentUser.id });
-      }
-      ws.disconnect();
-    };
+        const { puzzle } = await getPuzzle(game.puzzleId);
+        if (!cancelled) {
+          setPuzzle(puzzle);
+          startTimeRef.current = Date.now();
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load game");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
   }, [gameId]);
 
-  // Re-emit join_room on WS reconnect
+  // ── Effect 2: connect WS only for live games ────────────────────────────────
   useEffect(() => {
-    if (!gameId || !currentUser) return;
+    if (isLiveGame !== true || !gameId) return;
+    const token = localStorage.getItem("multicross_token") ?? "";
+    ws.connect(token);
+    return () => {
+      if (currentUser) ws.emit("leave_room", { gameId, userId: currentUser.id });
+      ws.disconnect();
+    };
+  }, [isLiveGame, gameId]);
+
+  // ── Effect 3: join room on WS connect (and reconnect) ──────────────────────
+  useEffect(() => {
+    if (isLiveGame !== true || !gameId || !currentUser) return;
     const unsub = ws.onConnect(() => {
       ws.emit("join_room", { gameId, userId: currentUser.id });
     });
     return unsub;
-  }, [gameId, currentUser]);
+  }, [isLiveGame, gameId]);
 
-  // Restore cursor positions from server on (re)join
+  // ── Effect 4: restore cursor positions from room_joined ─────────────────────
   useEffect(() => {
+    if (isLiveGame !== true) return;
     const unsubRoomJoined = ws.on("room_joined", (payload: RoomJoinedPayload) => {
       if (payload.cursors && Object.keys(payload.cursors).length > 0) {
         setCursors(payload.cursors);
       }
     });
     return unsubRoomJoined;
-  }, []);
+  }, [isLiveGame]);
 
-  // WS event listeners
+  // ── Effect 5: WS event listeners ───────────────────────────────────────────
   useEffect(() => {
+    if (isLiveGame !== true) return;
+
     const unsubCursor = ws.on("cursor_moved", (payload: CursorMovedPayload) => {
       setCursors((prev) => ({
         ...prev,
@@ -209,9 +263,9 @@ export default function GamePage() {
       unsubLeft();
       unsubAbandoned();
     };
-  }, [gameId]);
+  }, [isLiveGame, gameId]);
 
-  // Fetch existing rating + aggregate stats when completion modal opens
+  // ── Effect 6: fetch rating stats when completion modal opens ────────────────
   useEffect(() => {
     if (!completion || !puzzle) return;
     getPuzzleStats(puzzle.id)
@@ -225,6 +279,8 @@ export default function GamePage() {
       })
       .catch(() => {}); // rating is optional — ignore failures
   }, [completion?.completedAt, puzzle?.id]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────────
 
   async function handleRate() {
     if (!puzzle || ratingDifficulty === null || ratingEnjoyment === null) return;
@@ -298,6 +354,28 @@ export default function GamePage() {
       alert(err instanceof Error ? err.message : "Failed to abandon game");
     } finally {
       setAbandonLoading(false);
+    }
+  }
+
+  function handleViewPuzzle() {
+    setViewMode(true);
+    setIsLiveGame(false); // disconnects WS via effect cleanup
+    setCompletion(null);
+  }
+
+  async function handleLoadReplay() {
+    if (!gameId) return;
+    setReplayLoading(true);
+    setReplayError("");
+    try {
+      const { moves, hasFull } = await getGameHistory(gameId);
+      setHistoryMoves(moves);
+      setHistoryHasFull(hasFull);
+      setReplayActive(true);
+    } catch (err) {
+      setReplayError(err instanceof Error ? err.message : "Failed to load replay");
+    } finally {
+      setReplayLoading(false);
     }
   }
 
@@ -477,6 +555,16 @@ export default function GamePage() {
       fontWeight: "600",
       cursor: "pointer",
     },
+    modalBtnOutline: {
+      padding: "0.75rem 2rem",
+      background: "none",
+      color: "#2563eb",
+      border: "2px solid #2563eb",
+      borderRadius: "8px",
+      fontSize: "1rem",
+      fontWeight: "600",
+      cursor: "pointer",
+    },
     abandonBtn: {
       background: "rgba(220,38,38,0.15)",
       color: "#fca5a5",
@@ -507,6 +595,35 @@ export default function GamePage() {
       fontWeight: "600",
       cursor: "not-allowed",
     },
+    replayBtn: {
+      padding: "0.4rem 1rem",
+      background: "rgba(255,255,255,0.15)",
+      color: "#fff",
+      border: "1px solid rgba(255,255,255,0.4)",
+      borderRadius: "6px",
+      fontSize: "0.8rem",
+      cursor: "pointer",
+    },
+    completedBadge: {
+      background: "rgba(5,150,105,0.3)",
+      color: "#6ee7b7",
+      border: "1px solid rgba(5,150,105,0.5)",
+      borderRadius: "6px",
+      padding: "0.2rem 0.6rem",
+      fontSize: "0.75rem",
+      fontWeight: "600",
+    },
+    lobbyBtn: {
+      padding: "0.75rem 1.5rem",
+      background: "#2563eb",
+      color: "#fff",
+      border: "none",
+      borderRadius: "8px",
+      fontSize: "0.9rem",
+      fontWeight: "600",
+      cursor: "pointer",
+      width: "100%",
+    },
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -534,8 +651,117 @@ export default function GamePage() {
     );
   }
 
+  // ── View mode (completed game) ───────────────────────────────────────────────
+  if (viewMode) {
+    const displayCells = replayActive ? replayCells : cells;
+
+    return (
+      <div style={s.page}>
+        <header style={s.header}>
+          <div style={s.headerLeft}>
+            <button style={s.backBtn} onClick={() => navigate("/lobby")}>
+              ← Lobby
+            </button>
+            <div style={s.headerTitle}>{puzzle.title}</div>
+            <span style={s.completedBadge}>Completed</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {!replayActive && (
+              <button
+                style={s.replayBtn}
+                onClick={handleLoadReplay}
+                disabled={replayLoading}
+              >
+                {replayLoading ? "Loading…" : "▶ Replay"}
+              </button>
+            )}
+            <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
+              {showContributions ? "Hide contributions" : "Show contributions"}
+            </button>
+          </div>
+        </header>
+
+        <div style={s.content}>
+          <div style={s.gridArea}>
+            <CrosswordGrid
+              puzzle={puzzle}
+              cells={displayCells}
+              participants={participants}
+              currentUserId={currentUser?.id ?? ""}
+              readOnly={true}
+              showContributions={replayActive || showContributions}
+              showColors={!replayActive}
+            />
+
+            {replayError && (
+              <div style={{ color: "#dc2626", fontSize: "0.85rem", marginTop: "0.75rem" }}>
+                {replayError}
+              </div>
+            )}
+
+            {replayActive && (
+              <ReplayControls
+                playing={replayPlaying}
+                speed={replaySpeed}
+                currentStep={replayCurrentStep}
+                totalSteps={replayTotalSteps}
+                hasFull={historyHasFull}
+                onPlay={replayPlay}
+                onPause={replayPause}
+                onSetSpeed={setReplaySpeed}
+                onReset={replayReset}
+              />
+            )}
+
+            {showContributions && !replayActive && (
+              <div style={{ marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+                {participants.map((p) => (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "#374151" }}>
+                    <div style={{ width: "12px", height: "12px", borderRadius: "3px", background: p.color, flexShrink: 0 }} />
+                    <span>{getDisplayName(p)}{p.userId === currentUser?.id && " (you)"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={s.sidebar}>
+            <div style={s.playerCard}>
+              <div style={s.sectionTitle}>Players</div>
+              {participants.map((p) => (
+                <div key={p.id} style={s.participantRow}>
+                  <div style={{ ...s.colorDot, background: p.color }} />
+                  <span>
+                    {getDisplayName(p)}
+                    {p.userId === currentUser?.id && (
+                      <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}> (you)</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ ...s.playerCard, fontSize: "0.8rem", color: "#64748b" }}>
+              <div style={{ fontWeight: "600", color: "#374151", marginBottom: "0.25rem" }}>
+                {puzzle.title}
+              </div>
+              By {puzzle.author}
+              <br />
+              {puzzle.width}×{puzzle.height} grid
+            </div>
+
+            <button style={s.lobbyBtn} onClick={() => navigate("/lobby")}>
+              Back to Lobby
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const myParticipant = participants.find((p) => p.userId === currentUser?.id);
 
+  // ── Live game render ─────────────────────────────────────────────────────────
   return (
     <div style={s.page}>
       <header style={s.header}>
@@ -716,6 +942,9 @@ export default function GamePage() {
               </button>
             </div>
 
+            <button style={s.modalBtnOutline} onClick={handleViewPuzzle}>
+              View Puzzle
+            </button>
             <button style={s.modalBtn} onClick={() => navigate("/lobby")}>
               Back to lobby
             </button>

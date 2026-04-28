@@ -181,6 +181,19 @@ export interface GetGameResponse {
     participants: GameParticipant[];
     cells: GameCell[];
 }
+export interface GameMove {
+    id: string;
+    gameId: string;
+    userId: string;
+    row: number;
+    col: number;
+    value: string;
+    createdAt: string;
+}
+export interface GetGameHistoryResponse {
+    moves: GameMove[];
+    hasFull: boolean;
+}
 export interface GetPuzzleStatsResponse {
     stats: PuzzleStats;
     userRating: {

@@ -260,6 +260,58 @@ router.get("/", requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/games/:id/history — move history for a game (participants only)
+router.get("/:id/history", requireAuth, async (req, res, next) => {
+  try {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    if (!idParsed.success) {
+      res.status(400).json({ error: "Invalid game ID" });
+      return;
+    }
+    const gameId = idParsed.data;
+    const userId = req.user!.userId;
+
+    const [gameResult, membership] = await Promise.all([
+      pool.query(`SELECT id FROM games WHERE id = $1`, [gameId]),
+      pool.query(
+        "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+        [gameId, userId]
+      ),
+    ]);
+
+    if (!gameResult.rows[0]) {
+      res.status(404).json({ error: "Game not found" });
+      return;
+    }
+    if (!membership.rows[0]) {
+      res.status(404).json({ error: "Game not found" });
+      return;
+    }
+
+    const movesResult = await pool.query(
+      `SELECT id, game_id, user_id, row, col, value, created_at
+       FROM game_moves
+       WHERE game_id = $1
+       ORDER BY created_at ASC`,
+      [gameId]
+    );
+
+    const moves = movesResult.rows.map((m) => ({
+      id: m.id,
+      gameId: m.game_id,
+      userId: m.user_id,
+      row: m.row,
+      col: m.col,
+      value: m.value,
+      createdAt: m.created_at,
+    }));
+
+    res.json({ moves, hasFull: moves.length > 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const gameId = req.params.id;

@@ -5,6 +5,7 @@ import type {
   GetPuzzleResponse,
   CreateGameResponse,
   GetGameResponse,
+  GetGameHistoryResponse,
   GetPuzzleStatsResponse,
   RatePuzzleResponse,
 } from "@multicross/shared";
@@ -145,6 +146,10 @@ export function getGame(gameId: string): Promise<GetGameResponse> {
 
 export function abandonGame(gameId: string): Promise<{ success: boolean }> {
   return apiFetch<{ success: boolean }>(`/games/${gameId}/abandon`, { method: "PATCH" });
+}
+
+export function getGameHistory(gameId: string): Promise<GetGameHistoryResponse> {
+  return apiFetch<GetGameHistoryResponse>(`/games/${gameId}/history`);
 }
 
 export function createGame(puzzleId: string): Promise<CreateGameResponse & { roomCode: string }> {

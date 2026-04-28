@@ -1,3 +1,35 @@
+# Session: Completed Puzzle View + Game History Replay
+
+## Files Created
+- `server/src/db/migrations/006_game_moves.sql` — new table for append-only move history
+- `client/src/hooks/useReplay.ts` — hook managing replay state (play/pause/speed/cells)
+- `client/src/components/ReplayControls.tsx` — Play/Pause, speed selector (1×/2×/4×), step counter
+- `server/src/__tests__/gameHistory.test.ts` — 7 integration tests for GET /api/games/:id/history
+
+## Files Modified
+- `shared/src/types.ts` — added `GameMove`, `GetGameHistoryResponse` interfaces
+- `shared/dist/` — rebuilt after shared source change
+- `server/src/ws/handlers.ts` — `fill_cell` handler now also inserts into `game_moves`
+- `server/src/routes/games.ts` — added `GET /api/games/:id/history` endpoint (before `/:id`)
+- `client/src/components/CrosswordGrid.tsx` — added `readOnly` prop; `onCellFill`/`onCursorMove` now optional
+- `client/src/api/client.ts` — added `getGameHistory()` function
+- `client/src/pages/GamePage.tsx` — view mode, replay integration, restructured WS lifecycle to skip WS for completed/abandoned/expired games
+- `docs/contracts.md` — documented new endpoint, GameMove type, game_moves table
+
+## Key decisions
+- WS is not connected for completed/abandoned/expired games (no Redis key leak from spurious join_room)
+- `hasFull: false` returned when `game_moves` is empty (pre-migration games) — replay shows a static "no history" message
+- Replay replays deletions too (empty-string moves clear the cell during animation)
+- `readOnly` on CrosswordGrid makes `onCellFill`/`onCursorMove` optional — existing live-game callers unchanged
+- View mode entered: (a) directly on load when game.status === "complete", (b) via "View Puzzle" button in completion modal
+
+## Verification
+- Migration 006_game_moves.sql applied cleanly
+- 103 tests pass (7 new in gameHistory.test.ts)
+- Server and client TypeScript clean
+
+---
+
 # Session: Pagination and Sorting for Puzzle Browsing
 
 ## Files Modified

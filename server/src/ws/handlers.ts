@@ -301,7 +301,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
         const expected = grid ? (grid[row]?.[col] ?? null) : null;
         const correct = normalised !== "" && expected !== null && normalised === expected;
 
-        // Persist to postgres (upsert) and record activity timestamp
+        // Persist to postgres (upsert), record move history, and update activity timestamp
         await Promise.all([
           normalised !== ""
             ? pool.query(
@@ -315,6 +315,10 @@ export function registerWsHandlers(io: CrosswordServer): void {
                 `DELETE FROM game_cells WHERE game_id = $1 AND row = $2 AND col = $3`,
                 [gameId, row, col]
               ),
+          pool.query(
+            `INSERT INTO game_moves (game_id, user_id, row, col, value) VALUES ($1, $2, $3, $4, $5)`,
+            [gameId, userId, row, col, normalised]
+          ),
           pool.query(
             `UPDATE games SET last_activity_at = now() WHERE id = $1`,
             [gameId]

@@ -16,8 +16,9 @@ interface Props {
   showContributions?: boolean;
   showColors?: boolean;
   lockCorrect?: boolean;
-  onCellFill: (row: number, col: number, value: string) => void;
-  onCursorMove: (row: number, col: number) => void;
+  readOnly?: boolean;
+  onCellFill?: (row: number, col: number, value: string) => void;
+  onCursorMove?: (row: number, col: number) => void;
 }
 
 type Direction = "across" | "down";
@@ -84,6 +85,7 @@ export default function CrosswordGrid({
   showContributions = false,
   showColors = true,
   lockCorrect = false,
+  readOnly = false,
   onCellFill,
   onCursorMove,
 }: Props) {
@@ -220,10 +222,11 @@ export default function CrosswordGrid({
   // ── Clue selection ──────────────────────────────────────────────────────────
 
   function selectClue(clueCells: [number, number][], dir: Direction) {
+    if (readOnly) return;
     if (clueCells.length > 0) {
       setSelected({ row: clueCells[0][0], col: clueCells[0][1] });
       setDirection(dir);
-      onCursorMove(clueCells[0][0], clueCells[0][1]);
+      onCursorMove?.(clueCells[0][0], clueCells[0][1]);
     }
     hiddenInputRef.current?.focus();
   }
@@ -231,13 +234,14 @@ export default function CrosswordGrid({
   // ── Cell click ──────────────────────────────────────────────────────────────
 
   function handleCellClick(row: number, col: number) {
+    if (readOnly) return;
     if (grid[row][col] === null) return;
     if (selected?.row === row && selected?.col === col) {
       // Toggle direction on re-click
       setDirection((d) => (d === "across" ? "down" : "across"));
     } else {
       setSelected({ row, col });
-      onCursorMove(row, col);
+      onCursorMove?.(row, col);
     }
     hiddenInputRef.current?.focus();
   }
@@ -245,35 +249,35 @@ export default function CrosswordGrid({
   // ── Keyboard ────────────────────────────────────────────────────────────────
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (!selected) return;
+    if (readOnly || !selected) return;
     const { row, col } = selected;
 
     if (e.key === "ArrowRight") {
       e.preventDefault();
       setDirection("across");
       const next = nextWhiteCell(row, col, "across");
-      if (next) { setSelected(next); onCursorMove(next.row, next.col); }
+      if (next) { setSelected(next); onCursorMove?.(next.row, next.col); }
       return;
     }
     if (e.key === "ArrowLeft") {
       e.preventDefault();
       setDirection("across");
       const prev = prevWhiteCell(row, col, "across");
-      if (prev) { setSelected(prev); onCursorMove(prev.row, prev.col); }
+      if (prev) { setSelected(prev); onCursorMove?.(prev.row, prev.col); }
       return;
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setDirection("down");
       const next = nextWhiteCell(row, col, "down");
-      if (next) { setSelected(next); onCursorMove(next.row, next.col); }
+      if (next) { setSelected(next); onCursorMove?.(next.row, next.col); }
       return;
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
       setDirection("down");
       const prev = prevWhiteCell(row, col, "down");
-      if (prev) { setSelected(prev); onCursorMove(prev.row, prev.col); }
+      if (prev) { setSelected(prev); onCursorMove?.(prev.row, prev.col); }
       return;
     }
     if (e.key === "Tab") {
@@ -287,14 +291,14 @@ export default function CrosswordGrid({
       if (isCellLocked(row, col)) return;
       const existing = cellValueMap.get(`${row},${col}`);
       if (existing) {
-        onCellFill(row, col, "");
+        onCellFill?.(row, col, "");
       } else {
         const prev = prevWhiteCell(row, col, direction);
         if (prev) {
           if (isCellLocked(prev.row, prev.col)) return;
           setSelected(prev);
-          onCellFill(prev.row, prev.col, "");
-          onCursorMove(prev.row, prev.col);
+          onCellFill?.(prev.row, prev.col, "");
+          onCursorMove?.(prev.row, prev.col);
         }
       }
       return;
@@ -304,11 +308,11 @@ export default function CrosswordGrid({
       e.preventDefault();
       if (isCellLocked(row, col)) return;
       const letter = e.key.toUpperCase();
-      onCellFill(row, col, letter);
+      onCellFill?.(row, col, letter);
       const next = nextWhiteCell(row, col, direction);
       if (next) {
         setSelected(next);
-        onCursorMove(next.row, next.col);
+        onCursorMove?.(next.row, next.col);
       }
     }
   }
@@ -320,6 +324,7 @@ export default function CrosswordGrid({
   // On desktop, handleKeyDown calls e.preventDefault() which suppresses the
   // `input` event entirely, so there is no double-handling.
   function handleHiddenInput(e: React.FormEvent<HTMLInputElement>) {
+    if (readOnly) return;
     const nativeEvent = e.nativeEvent as InputEvent;
     // Always clear to prevent text accumulation in the hidden input.
     (e.target as HTMLInputElement).value = "";
@@ -331,14 +336,14 @@ export default function CrosswordGrid({
       if (isCellLocked(row, col)) return;
       const existing = cellValueMap.get(`${row},${col}`);
       if (existing) {
-        onCellFill(row, col, "");
+        onCellFill?.(row, col, "");
       } else {
         const prev = prevWhiteCell(row, col, direction);
         if (prev) {
           if (isCellLocked(prev.row, prev.col)) return;
           setSelected(prev);
-          onCellFill(prev.row, prev.col, "");
-          onCursorMove(prev.row, prev.col);
+          onCellFill?.(prev.row, prev.col, "");
+          onCursorMove?.(prev.row, prev.col);
         }
       }
       return;
@@ -348,11 +353,11 @@ export default function CrosswordGrid({
     if (!selected || !char || !/[a-zA-Z]/.test(char)) return;
     const { row, col } = selected;
     if (isCellLocked(row, col)) return;
-    onCellFill(row, col, char.toUpperCase());
+    onCellFill?.(row, col, char.toUpperCase());
     const next = nextWhiteCell(row, col, direction);
     if (next) {
       setSelected(next);
-      onCursorMove(next.row, next.col);
+      onCursorMove?.(next.row, next.col);
     }
   }
 
@@ -455,9 +460,9 @@ export default function CrosswordGrid({
     <div
       ref={containerRef}
       style={containerStyle}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-      onFocus={() => {
+      tabIndex={readOnly ? undefined : 0}
+      onKeyDown={readOnly ? undefined : handleKeyDown}
+      onFocus={readOnly ? undefined : () => {
         if (!selected) setSelected(firstWhiteCell());
       }}
     >
@@ -483,7 +488,7 @@ export default function CrosswordGrid({
                   height: CELL_SIZE,
                   background: bg,
                   position: "relative",
-                  cursor: isBlack ? "default" : "pointer",
+                  cursor: isBlack || readOnly ? "default" : "pointer",
                   userSelect: "none",
                   display: "flex",
                   alignItems: "center",
@@ -558,28 +563,30 @@ export default function CrosswordGrid({
           arrows/backspace/tab work without any extra wiring. The onInput handler
           catches Android's letter input which arrives as an input event rather
           than a keydown with a real key. */}
-      <input
-        ref={hiddenInputRef}
-        type="text"
-        inputMode="text"
-        aria-hidden="true"
-        autoCapitalize="none"
-        autoCorrect="off"
-        autoComplete="off"
-        spellCheck={false}
-        onInput={handleHiddenInput}
-        style={{
-          position: "absolute",
-          left: "-9999px",
-          top: 0,
-          width: "1px",
-          height: "1px",
-          opacity: 0,
-          fontSize: "16px",
-          border: "none",
-          padding: 0,
-        }}
-      />
+      {!readOnly && (
+        <input
+          ref={hiddenInputRef}
+          type="text"
+          inputMode="text"
+          aria-hidden="true"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          onInput={handleHiddenInput}
+          style={{
+            position: "absolute",
+            left: "-9999px",
+            top: 0,
+            width: "1px",
+            height: "1px",
+            opacity: 0,
+            fontSize: "16px",
+            border: "none",
+            padding: 0,
+          }}
+        />
+      )}
     </div>
   );
 }

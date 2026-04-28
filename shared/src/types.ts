@@ -225,6 +225,22 @@ export interface GetGameResponse {
   cells: GameCell[];
 }
 
+// GET /api/games/:id/history
+export interface GameMove {
+  id: string;
+  gameId: string;
+  userId: string;
+  row: number;
+  col: number;
+  value: string;
+  createdAt: string;
+}
+
+export interface GetGameHistoryResponse {
+  moves: GameMove[];
+  hasFull: boolean;
+}
+
 // GET /api/puzzles/:id/stats
 export interface GetPuzzleStatsResponse {
   stats: PuzzleStats;
