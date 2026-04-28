@@ -5,6 +5,8 @@ import type {
   GetPuzzleResponse,
   CreateGameResponse,
   GetGameResponse,
+  GetPuzzleStatsResponse,
+  RatePuzzleResponse,
 } from "@multicross/shared";
 
 const BASE_URL = `${import.meta.env.VITE_API_URL}/api`;
@@ -162,3 +164,20 @@ export async function joinGameByCode(roomCode: string): Promise<{ gameId: string
 
 /** Alias kept for internal backward-compat; prefer joinGameByCode. */
 export const joinGame = joinGameByCode;
+
+// ─── Puzzle ratings ───────────────────────────────────────────────────────────
+
+export function getPuzzleStats(puzzleId: string): Promise<GetPuzzleStatsResponse> {
+  return apiFetch<GetPuzzleStatsResponse>(`/puzzles/${puzzleId}/stats`);
+}
+
+export function ratePuzzle(
+  puzzleId: string,
+  difficulty: number,
+  enjoyment: number
+): Promise<RatePuzzleResponse> {
+  return apiFetch<RatePuzzleResponse>(`/puzzles/${puzzleId}/rate`, {
+    method: "POST",
+    body: JSON.stringify({ difficulty, enjoyment }),
+  });
+}

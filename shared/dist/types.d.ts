@@ -20,6 +20,16 @@ export interface Puzzle {
     updatedAt?: string;
     status?: 'draft' | 'published';
     authorId?: string;
+    playCount?: number;
+    ratingCount?: number;
+    averageDifficulty?: number | null;
+    averageEnjoyment?: number | null;
+}
+export interface PuzzleStats {
+    averageDifficulty: number | null;
+    averageEnjoyment: number | null;
+    playCount: number;
+    ratingCount: number;
 }
 export type GameStatus = "waiting" | "active" | "complete" | "abandoned" | "expired";
 export interface Game {
@@ -166,5 +176,19 @@ export interface GetGameResponse {
     game: Game;
     participants: GameParticipant[];
     cells: GameCell[];
+}
+export interface GetPuzzleStatsResponse {
+    stats: PuzzleStats;
+    userRating: {
+        difficulty: number;
+        enjoyment: number;
+    } | null;
+}
+export interface RatePuzzleRequest {
+    difficulty: number;
+    enjoyment: number;
+}
+export interface RatePuzzleResponse {
+    stats: PuzzleStats;
 }
 //# sourceMappingURL=types.d.ts.map

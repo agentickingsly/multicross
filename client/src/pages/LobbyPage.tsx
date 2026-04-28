@@ -116,6 +116,11 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.8rem",
     color: "#64748b",
   },
+  puzzleStats: {
+    fontSize: "0.75rem",
+    color: "#94a3b8",
+    marginTop: "0.1rem",
+  },
   puzzleActions: {
     display: "flex",
     alignItems: "center",
@@ -482,6 +487,12 @@ export default function LobbyPage() {
                     <div style={s.puzzleMeta}>
                       {puzzle.width}×{puzzle.height}
                     </div>
+                    {((puzzle.playCount ?? 0) > 0 || (puzzle.ratingCount ?? 0) > 0) && (
+                      <div style={s.puzzleStats}>
+                        {puzzle.playCount ?? 0} {(puzzle.playCount ?? 0) === 1 ? "play" : "plays"}
+                        {(puzzle.ratingCount ?? 0) > 0 && ` · ${puzzle.averageDifficulty?.toFixed(1)} diff · ${puzzle.averageEnjoyment?.toFixed(1)} enjoy · ${puzzle.ratingCount} ${puzzle.ratingCount === 1 ? "rating" : "ratings"}`}
+                      </div>
+                    )}
                   </div>
                   <div style={s.puzzleActions}>
                     <span style={badgeStyle(puzzle.status ?? "draft")}>
@@ -546,6 +557,12 @@ export default function LobbyPage() {
                       <div style={s.puzzleMeta}>
                         By {puzzle.author} · {puzzle.width}×{puzzle.height}
                       </div>
+                      {((puzzle.playCount ?? 0) > 0 || (puzzle.ratingCount ?? 0) > 0) && (
+                        <div style={s.puzzleStats}>
+                          {puzzle.playCount ?? 0} {(puzzle.playCount ?? 0) === 1 ? "play" : "plays"}
+                          {(puzzle.ratingCount ?? 0) > 0 && ` · ${puzzle.averageDifficulty?.toFixed(1)} diff · ${puzzle.averageEnjoyment?.toFixed(1)} enjoy · ${puzzle.ratingCount} ${puzzle.ratingCount === 1 ? "rating" : "ratings"}`}
+                        </div>
+                      )}
                     </div>
                     <button
                       style={s.createBtn}

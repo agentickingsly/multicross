@@ -15,7 +15,8 @@ import type {
   ParticipantLeftPayload,
   RoomJoinedPayload,
 } from "@multicross/shared";
-import { getGame, getPuzzle, abandonGame } from "../api/client";
+import type { PuzzleStats } from "@multicross/shared";
+import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle } from "../api/client";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
 
@@ -26,6 +27,36 @@ interface CursorPos {
 
 // Server returns displayName as an extra field alongside the typed GameParticipant
 type ParticipantWithName = GameParticipant & { displayName?: string };
+
+function StarRating({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: "2px" }}>
+      {([1, 2, 3, 4, 5] as const).map((n) => (
+        <button
+          key={n}
+          onClick={() => onChange(n)}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "1.4rem",
+            padding: "0 1px",
+            color: n <= (value ?? 0) ? "#f59e0b" : "#d1d5db",
+            lineHeight: 1,
+          }}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -53,6 +84,12 @@ export default function GamePage() {
   const [cursors, setCursors] = useState<Record<string, CursorPos>>({});
   const [completion, setCompletion] = useState<GameCompletePayload | null>(null);
   const [gameEnded, setGameEnded] = useState<{ status: "abandoned" | "expired" } | null>(null);
+  const [ratingDifficulty, setRatingDifficulty] = useState<number | null>(null);
+  const [ratingEnjoyment, setRatingEnjoyment] = useState<number | null>(null);
+  const [ratingStats, setRatingStats] = useState<PuzzleStats | null>(null);
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingError, setRatingError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -173,6 +210,36 @@ export default function GamePage() {
       unsubAbandoned();
     };
   }, [gameId]);
+
+  // Fetch existing rating + aggregate stats when completion modal opens
+  useEffect(() => {
+    if (!completion || !puzzle) return;
+    getPuzzleStats(puzzle.id)
+      .then(({ stats, userRating }) => {
+        setRatingStats(stats);
+        if (userRating) {
+          setRatingDifficulty(userRating.difficulty);
+          setRatingEnjoyment(userRating.enjoyment);
+          setRatingSubmitted(true);
+        }
+      })
+      .catch(() => {}); // rating is optional — ignore failures
+  }, [completion?.completedAt, puzzle?.id]);
+
+  async function handleRate() {
+    if (!puzzle || ratingDifficulty === null || ratingEnjoyment === null) return;
+    setRatingLoading(true);
+    setRatingError("");
+    try {
+      const { stats } = await ratePuzzle(puzzle.id, ratingDifficulty, ratingEnjoyment);
+      setRatingStats(stats);
+      setRatingSubmitted(true);
+    } catch {
+      setRatingError("Failed to submit rating");
+    } finally {
+      setRatingLoading(false);
+    }
+  }
 
   const handleCellFill = useCallback(
     (row: number, col: number, value: string) => {
@@ -420,6 +487,26 @@ export default function GamePage() {
       fontSize: "0.75rem",
       transition: "background 0.2s",
     },
+    rateBtn: {
+      padding: "0.5rem 1.25rem",
+      background: "#2563eb",
+      color: "#fff",
+      border: "none",
+      borderRadius: "6px",
+      fontSize: "0.875rem",
+      fontWeight: "600",
+      cursor: "pointer",
+    },
+    rateBtnDisabled: {
+      padding: "0.5rem 1.25rem",
+      background: "#cbd5e1",
+      color: "#fff",
+      border: "none",
+      borderRadius: "6px",
+      fontSize: "0.875rem",
+      fontWeight: "600",
+      cursor: "not-allowed",
+    },
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -597,6 +684,38 @@ export default function GamePage() {
                 })}
               </div>
             )}
+            {/* Rating section */}
+            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "1rem", textAlign: "left" }}>
+              <div style={{ fontWeight: "600", marginBottom: "0.75rem", color: "#374151", fontSize: "0.95rem" }}>
+                Rate this puzzle
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <span style={{ fontSize: "0.875rem", color: "#64748b", width: "78px", flexShrink: 0 }}>Difficulty</span>
+                  <StarRating value={ratingDifficulty} onChange={setRatingDifficulty} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <span style={{ fontSize: "0.875rem", color: "#64748b", width: "78px", flexShrink: 0 }}>Enjoyment</span>
+                  <StarRating value={ratingEnjoyment} onChange={setRatingEnjoyment} />
+                </div>
+              </div>
+              {ratingSubmitted && ratingStats && (
+                <div style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: "0.5rem" }}>
+                  Difficulty: {ratingStats.averageDifficulty?.toFixed(1) ?? "—"} · Enjoyment: {ratingStats.averageEnjoyment?.toFixed(1) ?? "—"} · {ratingStats.ratingCount} {ratingStats.ratingCount === 1 ? "rating" : "ratings"}
+                </div>
+              )}
+              {ratingError && (
+                <div style={{ color: "#dc2626", fontSize: "0.8rem", marginBottom: "0.5rem" }}>{ratingError}</div>
+              )}
+              <button
+                style={ratingDifficulty !== null && ratingEnjoyment !== null && !ratingLoading ? s.rateBtn : s.rateBtnDisabled}
+                onClick={handleRate}
+                disabled={ratingDifficulty === null || ratingEnjoyment === null || ratingLoading}
+              >
+                {ratingLoading ? "Submitting…" : ratingSubmitted ? "Update Rating" : "Rate Puzzle"}
+              </button>
+            </div>
+
             <button style={s.modalBtn} onClick={() => navigate("/lobby")}>
               Back to lobby
             </button>

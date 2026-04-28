@@ -1,3 +1,26 @@
+# Session: Puzzle Rating System
+
+## Files Created
+- `server/src/db/migrations/005_puzzle_ratings.sql` — adds `puzzle_ratings` table, `play_count` column on puzzles, and indexes
+- `server/src/__tests__/puzzleRatings.test.ts` — 14 integration tests for POST /rate and GET /stats
+
+## Files Modified
+- `shared/src/types.ts` — added `PuzzleStats`; added stats fields to `Puzzle`; added `GetPuzzleStatsResponse`, `RatePuzzleRequest`, `RatePuzzleResponse`
+- `shared/dist/` — rebuilt after types change
+- `server/src/routes/puzzles.ts` — added `POST /:id/rate` and `GET /:id/stats`; updated all puzzle queries to include `play_count`; list endpoints LEFT JOIN `puzzle_ratings` for aggregated stats
+- `server/src/ws/handlers.ts` — increments `puzzles.play_count` in `checkGameComplete`
+- `client/src/api/client.ts` — added `getPuzzleStats()` and `ratePuzzle()`
+- `client/src/pages/GamePage.tsx` — added `StarRating` component; rating UI on completion modal with pre-population and live aggregate display
+- `client/src/pages/LobbyPage.tsx` — displays stats (plays, avg difficulty/enjoyment, rating count) on puzzle cards
+- `docs/contracts.md` — documented new endpoints and `puzzle_ratings` table
+
+## Verification
+- Migration applied cleanly (`005_puzzle_ratings.sql`)
+- All 84 tests pass
+- Server TypeScript clean
+
+---
+
 # Session 3 — Puzzle editor page + My puzzles section
 
 ## Files Modified

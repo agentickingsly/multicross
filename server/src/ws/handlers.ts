@@ -493,6 +493,12 @@ async function checkGameComplete(
   );
   if (result.rowCount === 0) return;
 
+  await pool.query(
+    `UPDATE puzzles SET play_count = play_count + 1
+     WHERE id = (SELECT puzzle_id FROM games WHERE id = $1)`,
+    [gameId]
+  );
+
   // Compute per-user stats from Redis state
   const statsMap: Record<string, number> = {};
   for (const json of Object.values(stateHash)) {

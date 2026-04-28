@@ -47,11 +47,16 @@ Base path: `/api`
 | PATCH | `/games/:id/abandon` | — | `{ success: true }` — creator only; 403 for others; 400 if already finished |
 | GET | `/games/my-active` | — | `{ games: ActiveGame[] }` — caller's waiting/active games only |
 | GET | `/games/:id` | — | `{ game: Game, participants: GameParticipant[], cells: GameCell[] }` |
+| GET | `/puzzles/:id/stats` | — | `{ stats: PuzzleStats, userRating: { difficulty, enjoyment } \| null }` |
+| POST | `/puzzles/:id/rate` | `{ difficulty: 1-5, enjoyment: 1-5 }` | `{ stats: PuzzleStats }` |
 
 `ActiveGame`: `{ id, roomCode, status: "waiting"|"active", createdAt, puzzleTitle, participantCount: number }`
 
+`PuzzleStats`: `{ averageDifficulty: number|null, averageEnjoyment: number|null, playCount: number, ratingCount: number }`
+
 All error responses: `{ error: string }` with appropriate HTTP status code.
 Protected routes (POST /games, POST /games/:id/join, GET /games/:id) require `Authorization: Bearer <token>` header.
+All puzzle rating endpoints require `Authorization: Bearer <token>` header.
 
 ---
 
@@ -80,6 +85,7 @@ See `/server/src/db/schema.sql` for full DDL.
 | `games` | `id` (uuid) | `room_code` (unique 6-char), `status` (`waiting`\|`active`\|`complete`\|`abandoned`\|`expired`), `puzzle_id` → puzzles, `created_by` → users, `last_activity_at` (updated on each fill_cell) |
 | `game_participants` | `id` (uuid) | `game_id` → games, `user_id` → users, `color` (hex), unique(game_id, user_id) |
 | `game_cells` | `id` (uuid) | `game_id` → games, `row`, `col`, `value` (char), `filled_by` → users, unique(game_id, row, col) |
+| `puzzle_ratings` | `id` (uuid) | `puzzle_id` → puzzles, `user_id` → users, `difficulty` (1-5), `enjoyment` (1-5), unique(puzzle_id, user_id) |
 
 ---
 
