@@ -312,6 +312,57 @@ router.get("/:id/history", requireAuth, async (req, res, next) => {
   }
 });
 
+// POST /api/games/:id/report
+router.post("/:id/report", requireAuth, async (req, res, next) => {
+  try {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    if (!idParsed.success) {
+      res.status(400).json({ error: "Invalid game ID" });
+      return;
+    }
+    const gameId = idParsed.data;
+    const reporterId = req.user!.userId;
+
+    const bodyParsed = z.object({
+      reportedUserId: z.string().uuid(),
+      reason: z.string().min(1).max(500),
+    }).safeParse(req.body);
+    if (!bodyParsed.success) {
+      res.status(400).json({ error: bodyParsed.error.issues[0].message });
+      return;
+    }
+    const { reportedUserId, reason } = bodyParsed.data;
+
+    if (reportedUserId === reporterId) {
+      res.status(400).json({ error: "You cannot report yourself" });
+      return;
+    }
+
+    const gameCheck = await pool.query("SELECT id FROM games WHERE id = $1", [gameId]);
+    if (!gameCheck.rows[0]) {
+      res.status(404).json({ error: "Game not found" });
+      return;
+    }
+
+    const reportedCheck = await pool.query("SELECT id FROM users WHERE id = $1", [reportedUserId]);
+    if (!reportedCheck.rows[0]) {
+      res.status(404).json({ error: "Reported user not found" });
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO game_reports (game_id, reporter_id, reported_user_id, reason)
+       VALUES ($1, $2, $3, $4)`,
+      [gameId, reporterId, reportedUserId, reason]
+    );
+
+    logger.info({ gameId, reporterId, reportedUserId }, "Player reported");
+    res.status(201).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const gameId = req.params.id;

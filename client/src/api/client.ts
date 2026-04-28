@@ -181,6 +181,17 @@ export async function joinGameByCode(roomCode: string): Promise<{ gameId: string
 /** Alias kept for internal backward-compat; prefer joinGameByCode. */
 export const joinGame = joinGameByCode;
 
+export function reportPlayer(
+  gameId: string,
+  reportedUserId: string,
+  reason: string
+): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/games/${gameId}/report`, {
+    method: "POST",
+    body: JSON.stringify({ reportedUserId, reason }),
+  });
+}
+
 // ─── Puzzle ratings ───────────────────────────────────────────────────────────
 
 export function getPuzzleStats(puzzleId: string): Promise<GetPuzzleStatsResponse> {

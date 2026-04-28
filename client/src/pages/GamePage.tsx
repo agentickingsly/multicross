@@ -17,7 +17,7 @@ import type {
   RoomJoinedPayload,
 } from "@multicross/shared";
 import type { PuzzleStats } from "@multicross/shared";
-import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory } from "../api/client";
+import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer } from "../api/client";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
 import ReplayControls from "../components/ReplayControls";
@@ -111,6 +111,13 @@ export default function GamePage() {
   const [showColors, setShowColors] = useState(true);
   const [lockCorrect, setLockCorrect] = useState(false);
   const [abandonLoading, setAbandonLoading] = useState(false);
+
+  // ── Report state ─────────────────────────────────────────────────────────────
+  const [reportTarget, setReportTarget] = useState<ParticipantWithName | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const [reportSuccess, setReportSuccess] = useState(false);
 
   // ── Rating state ─────────────────────────────────────────────────────────────
   const [ratingDifficulty, setRatingDifficulty] = useState<number | null>(null);
@@ -354,6 +361,25 @@ export default function GamePage() {
       alert(err instanceof Error ? err.message : "Failed to abandon game");
     } finally {
       setAbandonLoading(false);
+    }
+  }
+
+  async function handleReport() {
+    if (!gameId || !reportTarget) return;
+    setReportLoading(true);
+    setReportError("");
+    try {
+      await reportPlayer(gameId, reportTarget.userId, reportReason);
+      setReportSuccess(true);
+      setTimeout(() => {
+        setReportTarget(null);
+        setReportReason("");
+        setReportSuccess(false);
+      }, 1500);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Failed to submit report");
+    } finally {
+      setReportLoading(false);
     }
   }
 
@@ -624,6 +650,28 @@ export default function GamePage() {
       cursor: "pointer",
       width: "100%",
     },
+    reportBtn: {
+      background: "none",
+      color: "#94a3b8",
+      border: "1px solid #cbd5e1",
+      borderRadius: "4px",
+      padding: "0.1rem 0.4rem",
+      cursor: "pointer",
+      fontSize: "0.7rem",
+      marginLeft: "auto",
+      flexShrink: 0,
+    },
+    reportTextarea: {
+      width: "100%",
+      minHeight: "80px",
+      padding: "0.5rem",
+      borderRadius: "6px",
+      border: "1px solid #cbd5e1",
+      fontSize: "0.875rem",
+      resize: "vertical",
+      fontFamily: "inherit",
+      boxSizing: "border-box" as const,
+    },
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -838,6 +886,15 @@ export default function GamePage() {
                     <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}> (you)</span>
                   )}
                 </span>
+                {p.userId !== currentUser?.id && (
+                  <button
+                    style={s.reportBtn}
+                    onClick={() => { setReportTarget(p); setReportReason(""); setReportError(""); setReportSuccess(false); }}
+                    title="Report player"
+                  >
+                    Report
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -967,6 +1024,55 @@ export default function GamePage() {
             <button style={s.modalBtn} onClick={() => navigate("/lobby")}>
               Back to lobby
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Report player modal */}
+      {reportTarget && (
+        <div style={s.modal}>
+          <div style={{ ...s.modalBox, textAlign: "left", gap: "0.75rem" }}>
+            <div style={{ fontSize: "1.1rem", fontWeight: "700", color: "#1e3a5f", margin: 0 }}>
+              Report {getDisplayName(reportTarget)}
+            </div>
+            {reportSuccess ? (
+              <p style={{ color: "#059669", margin: 0 }}>Report submitted. Thank you.</p>
+            ) : (
+              <>
+                <p style={{ margin: 0, color: "#64748b", fontSize: "0.875rem" }}>
+                  Describe the issue (max 500 characters):
+                </p>
+                <textarea
+                  style={s.reportTextarea}
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  maxLength={500}
+                  placeholder="e.g. Offensive language, harassment..."
+                />
+                <div style={{ fontSize: "0.75rem", color: "#94a3b8", textAlign: "right" }}>
+                  {reportReason.length}/500
+                </div>
+                {reportError && (
+                  <div style={{ color: "#dc2626", fontSize: "0.875rem" }}>{reportError}</div>
+                )}
+                <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+                  <button
+                    style={s.modalBtnOutline}
+                    onClick={() => setReportTarget(null)}
+                    disabled={reportLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    style={reportReason.trim().length > 0 && !reportLoading ? s.modalBtn : { ...s.modalBtn, background: "#94a3b8", cursor: "not-allowed" }}
+                    onClick={handleReport}
+                    disabled={reportReason.trim().length === 0 || reportLoading}
+                  >
+                    {reportLoading ? "Submitting…" : "Submit Report"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

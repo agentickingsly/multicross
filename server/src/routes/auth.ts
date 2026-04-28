@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import pool from "../db/pool";
+import { BLOCKED_EMAIL_DOMAINS } from "../config/blockedDomains";
 
 const router = Router();
 
@@ -34,6 +35,12 @@ router.post("/register", async (req, res) => {
     return;
   }
   const { email, displayName, password } = parsed.data;
+
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  if (BLOCKED_EMAIL_DOMAINS.includes(domain)) {
+    res.status(400).json({ error: "Email domain not allowed" });
+    return;
+  }
 
   try {
     const passwordHash = await bcrypt.hash(password, 12);

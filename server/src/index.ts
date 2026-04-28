@@ -11,9 +11,11 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@multicross/sha
 
 import { logger } from "./logger";
 import pool from "./db/pool";
+import { requireAuth, requireNotBanned, requireAdmin } from "./middleware/auth";
 import authRouter from "./routes/auth";
 import puzzlesRouter from "./routes/puzzles";
 import gamesRouter from "./routes/games";
+import adminRouter from "./routes/admin";
 import { registerWsHandlers } from "./ws/handlers";
 import { startExpiryJob } from "./jobs/expiry";
 
@@ -58,8 +60,9 @@ if (process.env.NODE_ENV !== "test") {
   app.use("/api/auth", authLimiter);
 }
 app.use("/api/auth", authRouter);
-app.use("/api/puzzles", puzzlesRouter);
-app.use("/api/games", gamesRouter);
+app.use("/api/puzzles", requireAuth, requireNotBanned, puzzlesRouter);
+app.use("/api/games", requireAuth, requireNotBanned, gamesRouter);
+app.use("/api/admin", requireAuth, requireNotBanned, requireAdmin, adminRouter);
 
 if (process.env.NODE_ENV === "production") {
   const clientDist = path.join(__dirname, "../../client/dist");

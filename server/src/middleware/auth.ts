@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import pool from "../db/pool";
 
 export interface JwtPayload {
   userId: string;
@@ -27,5 +28,39 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     next();
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
+  }
+}
+
+export async function requireNotBanned(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) { next(); return; }
+  try {
+    const result = await pool.query(
+      "SELECT is_banned FROM users WHERE id = $1",
+      [req.user.userId]
+    );
+    if (result.rows[0]?.is_banned) {
+      res.status(403).json({ error: "Account suspended" });
+      return;
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) { res.status(401).json({ error: "Missing or invalid Authorization header" }); return; }
+  try {
+    const result = await pool.query(
+      "SELECT is_admin FROM users WHERE id = $1",
+      [req.user.userId]
+    );
+    if (!result.rows[0]?.is_admin) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    next();
+  } catch (err) {
+    next(err);
   }
 }

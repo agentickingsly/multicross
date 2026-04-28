@@ -1,3 +1,26 @@
+# Session: Three-tier user protection system
+
+## Files created
+- `server/src/db/migrations/007_user_protection.sql` — adds is_banned/banned_at/banned_reason/is_admin to users; creates game_reports table with indexes; seeds admin via DO block
+- `server/src/config/blockedDomains.ts` — hardcoded blocklist of 20 disposable email domains
+- `server/src/routes/admin.ts` — admin endpoints: POST /ban, POST /unban, GET /users, GET /reports
+- `server/src/__tests__/admin.test.ts` — tests for ban middleware, ban/unban endpoints, admin user list
+- `server/src/__tests__/reports.test.ts` — tests for POST /games/:id/report and GET /admin/reports
+
+## Files modified
+- `server/src/middleware/auth.ts` — added requireNotBanned (403 if banned) and requireAdmin (403 if not admin)
+- `server/src/routes/auth.ts` — added email domain blocking on registration (400 for blocked domains)
+- `server/src/routes/games.ts` — added POST /api/games/:id/report endpoint
+- `server/src/index.ts` — imported and wired requireNotBanned/requireAdmin at route-group level; registered adminRouter
+- `client/src/api/client.ts` — added reportPlayer() function
+- `client/src/pages/GamePage.tsx` — added report state, handleReport(), report modal, Report buttons per participant
+- `docs/contracts.md` — documented all new REST endpoints and updated DB schema summary
+
+## Test results
+130/130 tests pass across 9 test files.
+
+---
+
 # Session: Completed Puzzle View + Game History Replay
 
 ## Files Created

@@ -53,6 +53,14 @@ Base path: `/api`
 | GET | `/games/:id/history` | — | `{ moves: GameMove[], hasFull: boolean }` — participant only; `hasFull` is true when full move history exists, false for games played before move recording was added |
 | GET | `/puzzles/:id/stats` | — | `{ stats: PuzzleStats, userRating: { difficulty, enjoyment } \| null }` |
 | POST | `/puzzles/:id/rate` | `{ difficulty: 1-5, enjoyment: 1-5 }` | `{ stats: PuzzleStats }` |
+| POST | `/games/:id/report` | `{ reportedUserId: uuid, reason: string (max 500) }` | `{ success: true }` — 400 if self-report or invalid fields; 404 if game/user not found |
+| POST | `/admin/users/:id/ban` | `{ reason?: string }` | `{ success: true }` — admin only; 403 for non-admin |
+| POST | `/admin/users/:id/unban` | — | `{ success: true }` — admin only |
+| GET | `/admin/users` | query: `page` (default 1), `limit` (default 20, max 100) | `{ users: AdminUser[], total, page, limit, totalPages }` — admin only |
+| GET | `/admin/reports` | query: `page` (default 1), `limit` (default 20, max 100) | `{ reports: AdminReport[], total, page, limit, totalPages }` — admin only |
+
+`AdminUser`: `{ id, email, displayName, isBanned, bannedAt, bannedReason, isAdmin, createdAt }`
+`AdminReport`: `{ id, gameId, reason, createdAt, reporter: { id, email, displayName }, reportedUser: { id, email, displayName } }`
 
 `ActiveGame`: `{ id, roomCode, status: "waiting"|"active", createdAt, puzzleTitle, participantCount: number }`
 
@@ -86,13 +94,14 @@ See `/server/src/db/schema.sql` for full DDL.
 
 | Table | Primary Key | Notable Columns |
 |-------|-------------|-----------------|
-| `users` | `id` (uuid) | `email` (unique), `display_name`, `password_hash` |
+| `users` | `id` (uuid) | `email` (unique), `display_name`, `password_hash`, `is_banned` (bool), `banned_at`, `banned_reason`, `is_admin` (bool) |
 | `puzzles` | `id` (uuid) | `width`, `height`, `grid` (jsonb), `clues` (jsonb) |
 | `games` | `id` (uuid) | `room_code` (unique 6-char), `status` (`waiting`\|`active`\|`complete`\|`abandoned`\|`expired`), `puzzle_id` → puzzles, `created_by` → users, `last_activity_at` (updated on each fill_cell) |
 | `game_participants` | `id` (uuid) | `game_id` → games, `user_id` → users, `color` (hex), unique(game_id, user_id) |
 | `game_cells` | `id` (uuid) | `game_id` → games, `row`, `col`, `value` (char), `filled_by` → users, unique(game_id, row, col) |
 | `game_moves` | `id` (uuid) | `game_id` → games, `user_id` → users, `row`, `col`, `value` (text, empty=deletion), `created_at` — append-only move history; not updated on re-fill |
 | `puzzle_ratings` | `id` (uuid) | `puzzle_id` → puzzles, `user_id` → users, `difficulty` (1-5), `enjoyment` (1-5), unique(puzzle_id, user_id) |
+| `game_reports` | `id` (uuid) | `game_id` → games (CASCADE), `reporter_id` → users (CASCADE), `reported_user_id` → users (CASCADE), `reason` (text), `created_at` |
 
 ---
 
