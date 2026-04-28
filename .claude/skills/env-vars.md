@@ -3,7 +3,12 @@
 ## server/.env
 | Var | Purpose |
 |-----|---------|
-| `DATABASE_URL` | PostgreSQL connection string |
+| `DATABASE_URL` | PostgreSQL superuser connection string — **always set**; used by the migration runner and as fallback for the app pool when `DB_USER` is not set |
+| `DB_USER` | App pool DB username — when set, pool.ts uses individual vars instead of `DATABASE_URL`; **in production, set to `multicross_app` (DML-only user)** |
+| `DB_PASSWORD` | App pool DB password |
+| `DB_HOST` | App pool DB host (default: `localhost`) |
+| `DB_PORT` | App pool DB port (default: `5432`) |
+| `DB_NAME` | App pool DB name |
 | `REDIS_URL` | Redis connection string |
 | `JWT_SECRET` | Secret used to sign and verify JWTs |
 | `ALLOWED_ORIGINS` | CORS allowed origins — **must be `https://multicross.org` in production, never `http://`** |
