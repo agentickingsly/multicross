@@ -74,7 +74,7 @@ router.get("/mine", requireAuth, async (req, res, next) => {
   try {
     const parsed = mineListQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0].message });
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
     const { page, limit } = parsed.data;
@@ -117,7 +117,7 @@ router.get("/", requireAuth, async (req, res, next) => {
   try {
     const parsed = puzzleListQuerySchema.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0].message });
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
     const { page, limit, sort } = parsed.data;
@@ -258,7 +258,7 @@ router.post("/:id/rate", requireAuth, async (req, res, next) => {
 
     const parsed = ratingBodySchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.errors[0].message });
+      res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
     const { difficulty, enjoyment } = parsed.data;

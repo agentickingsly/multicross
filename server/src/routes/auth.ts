@@ -30,7 +30,7 @@ router.post("/register", async (req, res) => {
 
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.errors[0].message });
+    res.status(400).json({ error: parsed.error.issues[0].message });
     return;
   }
   const { email, displayName, password } = parsed.data;
@@ -69,7 +69,7 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res, next) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.errors[0].message });
+    res.status(400).json({ error: parsed.error.issues[0].message });
     return;
   }
   const { email, password } = parsed.data;
