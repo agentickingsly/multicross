@@ -436,3 +436,132 @@ describe("DELETE /api/puzzles/:id", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+// ─── GET /api/puzzles — pagination and sorting ───────────────────────────────
+
+describe("GET /api/puzzles — pagination and sorting", () => {
+  let token: string;
+
+  beforeAll(async () => {
+    ({ token } = await registerUser("Pagination Test User"));
+    await createPuzzle(token, { status: "published", title: "Pagination Puzzle A" });
+    await createPuzzle(token, { status: "published", title: "Pagination Puzzle B" });
+  });
+
+  it("returns paginated shape with defaults", async () => {
+    const res = await request(app)
+      .get("/api/puzzles")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("total");
+    expect(typeof res.body.total).toBe("number");
+    expect(res.body).toHaveProperty("page", 1);
+    expect(res.body).toHaveProperty("limit", 12);
+    expect(res.body).toHaveProperty("totalPages");
+    expect(typeof res.body.totalPages).toBe("number");
+    expect(Array.isArray(res.body.puzzles)).toBe(true);
+  });
+
+  it("respects the limit param", async () => {
+    const res = await request(app)
+      .get("/api/puzzles?limit=1")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(1);
+    expect(res.body.puzzles.length).toBeLessThanOrEqual(1);
+  });
+
+  it("respects the page param and returns correct page", async () => {
+    const res = await request(app)
+      .get("/api/puzzles?page=2&limit=1")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(2);
+    expect(res.body.limit).toBe(1);
+  });
+
+  it("accepts all valid sort values", async () => {
+    for (const sort of ["newest", "most_played", "most_difficult", "most_enjoyable"]) {
+      const res = await request(app)
+        .get(`/api/puzzles?sort=${sort}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it("returns 400 for invalid sort value", async () => {
+    const res = await request(app)
+      .get("/api/puzzles?sort=invalid")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when limit exceeds maximum (> 50)", async () => {
+    const res = await request(app)
+      .get("/api/puzzles?limit=51")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when page is less than 1", async () => {
+    const res = await request(app)
+      .get("/api/puzzles?page=0")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("totalPages matches total and limit", async () => {
+    const res = await request(app)
+      .get("/api/puzzles?limit=1")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.totalPages).toBe(Math.ceil(res.body.total / 1));
+  });
+});
+
+// ─── GET /api/puzzles/mine — pagination ──────────────────────────────────────
+
+describe("GET /api/puzzles/mine — pagination", () => {
+  let token: string;
+
+  beforeAll(async () => {
+    ({ token } = await registerUser("Mine Pagination User"));
+    await createPuzzle(token, { title: "Mine Pag Puzzle" });
+  });
+
+  it("returns paginated shape with defaults", async () => {
+    const res = await request(app)
+      .get("/api/puzzles/mine")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("total");
+    expect(typeof res.body.total).toBe("number");
+    expect(res.body).toHaveProperty("page", 1);
+    expect(res.body).toHaveProperty("limit", 12);
+    expect(res.body).toHaveProperty("totalPages");
+    expect(Array.isArray(res.body.puzzles)).toBe(true);
+  });
+
+  it("respects the limit param", async () => {
+    const res = await request(app)
+      .get("/api/puzzles/mine?limit=1")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(1);
+    expect(res.body.puzzles.length).toBeLessThanOrEqual(1);
+  });
+
+  it("returns 400 when limit exceeds maximum (> 50)", async () => {
+    const res = await request(app)
+      .get("/api/puzzles/mine?limit=51")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when page is less than 1", async () => {
+    const res = await request(app)
+      .get("/api/puzzles/mine?page=0")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(400);
+  });
+});

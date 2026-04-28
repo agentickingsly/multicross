@@ -1,3 +1,22 @@
+# Session: Pagination and Sorting for Puzzle Browsing
+
+## Files Modified
+
+- `shared/src/types.ts` — Updated `ListPuzzlesResponse` to include `total`, `page`, `limit`, `totalPages`
+- `shared/dist/` — Rebuilt after types change
+- `server/src/routes/puzzles.ts` — Added `puzzleListQuerySchema` (page, limit, sort), `mineListQuerySchema` (page, limit), `SORT_CLAUSES` map; updated `GET /` and `GET /mine` to return paginated response with parallel count query
+- `client/src/api/client.ts` — Added `PuzzleSortOption` type; updated `getPuzzles` and `getMyPuzzles` to accept optional pagination/sort params
+- `client/src/pages/LobbyPage.tsx` — Added sort state, page state, pagination metadata; sort controls and pagination UI in "Start a new game" section; total puzzle count display
+- `server/src/__tests__/puzzles.test.ts` — Added 12 new tests across two describe blocks for pagination and sort validation
+- `docs/contracts.md` — Documented new query params and paginated response shape for GET /puzzles and GET /puzzles/mine
+
+## Verification
+
+- 96 tests passing (84 pre-existing + 12 new)
+- Server and client TypeScript clean
+
+---
+
 # Session: Puzzle Rating System
 
 ## Files Created

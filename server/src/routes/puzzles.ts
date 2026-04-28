@@ -6,6 +6,24 @@ import { logger } from "../logger";
 
 const router = Router();
 
+const puzzleListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+  sort: z.enum(["newest", "most_played", "most_difficult", "most_enjoyable"]).default("newest"),
+});
+
+const mineListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(12),
+});
+
+const SORT_CLAUSES: Record<string, string> = {
+  newest: "p.created_at DESC",
+  most_played: "p.play_count DESC",
+  most_difficult: "average_difficulty DESC NULLS LAST",
+  most_enjoyable: "average_enjoyment DESC NULLS LAST",
+};
+
 const puzzleBodySchema = z.object({
   title: z.string().min(1).max(100),
   author: z.string().min(1).max(100),
@@ -54,37 +72,84 @@ const RATING_AGGREGATE_SQL = `
 // GET /api/puzzles/mine
 router.get("/mine", requireAuth, async (req, res, next) => {
   try {
-    const result = await pool.query(
-      `SELECT p.id, p.title, p.author, p.width, p.height, p.grid, p.clues,
-              p.created_at, p.updated_at, p.status, p.author_id, p.play_count,
-              ${RATING_AGGREGATE_SQL}
-       FROM puzzles p
-       LEFT JOIN puzzle_ratings pr ON pr.puzzle_id = p.id
-       WHERE p.author_id = $1
-       GROUP BY p.id
-       ORDER BY p.updated_at DESC`,
-      [req.user!.userId]
-    );
-    res.json({ puzzles: result.rows.map(rowToPuzzle) });
+    const parsed = mineListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0].message });
+      return;
+    }
+    const { page, limit } = parsed.data;
+    const offset = (page - 1) * limit;
+
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(
+        `SELECT p.id, p.title, p.author, p.width, p.height, p.grid, p.clues,
+                p.created_at, p.updated_at, p.status, p.author_id, p.play_count,
+                ${RATING_AGGREGATE_SQL}
+         FROM puzzles p
+         LEFT JOIN puzzle_ratings pr ON pr.puzzle_id = p.id
+         WHERE p.author_id = $1
+         GROUP BY p.id
+         ORDER BY p.updated_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.user!.userId, limit, offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS total FROM puzzles WHERE author_id = $1`,
+        [req.user!.userId]
+      ),
+    ]);
+
+    const total: number = countResult.rows[0].total;
+    res.json({
+      puzzles: dataResult.rows.map(rowToPuzzle),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (err) {
     next(err);
   }
 });
 
 // GET /api/puzzles
-router.get("/", requireAuth, async (_req, res, next) => {
+router.get("/", requireAuth, async (req, res, next) => {
   try {
-    const result = await pool.query(
-      `SELECT p.id, p.title, p.author, p.width, p.height, p.grid, p.clues,
-              p.created_at, p.updated_at, p.status, p.author_id, p.play_count,
-              ${RATING_AGGREGATE_SQL}
-       FROM puzzles p
-       LEFT JOIN puzzle_ratings pr ON pr.puzzle_id = p.id
-       WHERE p.status = 'published'
-       GROUP BY p.id
-       ORDER BY p.created_at DESC`
-    );
-    res.json({ puzzles: result.rows.map(rowToPuzzle) });
+    const parsed = puzzleListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0].message });
+      return;
+    }
+    const { page, limit, sort } = parsed.data;
+    const offset = (page - 1) * limit;
+    const orderBy = SORT_CLAUSES[sort];
+
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(
+        `SELECT p.id, p.title, p.author, p.width, p.height, p.grid, p.clues,
+                p.created_at, p.updated_at, p.status, p.author_id, p.play_count,
+                ${RATING_AGGREGATE_SQL}
+         FROM puzzles p
+         LEFT JOIN puzzle_ratings pr ON pr.puzzle_id = p.id
+         WHERE p.status = 'published'
+         GROUP BY p.id
+         ORDER BY ${orderBy}
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int AS total FROM puzzles WHERE status = 'published'`
+      ),
+    ]);
+
+    const total: number = countResult.rows[0].total;
+    res.json({
+      puzzles: dataResult.rows.map(rowToPuzzle),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (err) {
     next(err);
   }

@@ -155,6 +155,10 @@ export interface LoginResponse {
 }
 export interface ListPuzzlesResponse {
     puzzles: Puzzle[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
 }
 export interface GetPuzzleResponse {
     puzzle: Puzzle;

@@ -3,7 +3,7 @@ import { useWindowWidth } from "../utils/useWindowWidth";
 import { useNavigate } from "react-router-dom";
 import type { Puzzle, User } from "@multicross/shared";
 import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle, getMyActiveGames, abandonGame } from "../api/client";
-import type { ActiveGame } from "../api/client";
+import type { ActiveGame, PuzzleSortOption } from "../api/client";
 
 const s: Record<string, React.CSSProperties> = {
   page: {
@@ -197,6 +197,32 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.875rem",
     padding: "0.5rem 0",
   },
+  sortRow: {
+    display: "flex",
+    gap: "0.5rem",
+    flexWrap: "wrap" as const,
+    alignItems: "center",
+    marginBottom: "1rem",
+  },
+  sortLabel: {
+    fontSize: "0.78rem",
+    color: "#64748b",
+    marginRight: "0.25rem",
+  },
+  paginationRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.75rem",
+    marginTop: "1rem",
+    fontSize: "0.875rem",
+    color: "#64748b",
+  },
+  puzzleCount: {
+    fontSize: "0.8rem",
+    color: "#94a3b8",
+    fontWeight: "400",
+  },
   activeGameCard: {
     display: "flex",
     alignItems: "center",
@@ -248,6 +274,18 @@ const s: Record<string, React.CSSProperties> = {
   },
 };
 
+function sortBtnStyle(active: boolean): React.CSSProperties {
+  return active
+    ? { background: "#2563eb", color: "#fff", border: "1.5px solid #2563eb", borderRadius: "6px", padding: "0.3rem 0.75rem", cursor: "pointer", fontWeight: "600", fontSize: "0.8rem" }
+    : { background: "transparent", color: "#2563eb", border: "1.5px solid #93c5fd", borderRadius: "6px", padding: "0.3rem 0.75rem", cursor: "pointer", fontWeight: "600", fontSize: "0.8rem" };
+}
+
+function pageBtnStyle(disabled: boolean): React.CSSProperties {
+  return disabled
+    ? { background: "transparent", color: "#94a3b8", border: "1.5px solid #e2e8f0", borderRadius: "6px", padding: "0.3rem 0.75rem", cursor: "not-allowed", fontWeight: "600", fontSize: "0.8rem" }
+    : { background: "transparent", color: "#2563eb", border: "1.5px solid #93c5fd", borderRadius: "6px", padding: "0.3rem 0.75rem", cursor: "pointer", fontWeight: "600", fontSize: "0.8rem" };
+}
+
 function badgeStyle(status: "draft" | "published"): React.CSSProperties {
   return {
     fontSize: "0.7rem",
@@ -268,6 +306,10 @@ export default function LobbyPage() {
   const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
   const [loadingPuzzles, setLoadingPuzzles] = useState(true);
   const [puzzleError, setPuzzleError] = useState("");
+  const [puzzlePage, setPuzzlePage] = useState(1);
+  const [puzzleSort, setPuzzleSort] = useState<PuzzleSortOption>("newest");
+  const [puzzleTotalPages, setPuzzleTotalPages] = useState(1);
+  const [puzzleTotal, setPuzzleTotal] = useState(0);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [createError, setCreateError] = useState<{ id: string; msg: string } | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -293,11 +335,17 @@ export default function LobbyPage() {
   })();
 
   useEffect(() => {
-    getPuzzles()
-      .then(({ puzzles }) => setPuzzles(puzzles))
+    setLoadingPuzzles(true);
+    setPuzzleError("");
+    getPuzzles({ page: puzzlePage, sort: puzzleSort })
+      .then((data) => {
+        setPuzzles(data.puzzles);
+        setPuzzleTotalPages(data.totalPages);
+        setPuzzleTotal(data.total);
+      })
       .catch((err) => setPuzzleError(err instanceof Error ? err.message : "Failed to load puzzles"))
       .finally(() => setLoadingPuzzles(false));
-  }, []);
+  }, [puzzlePage, puzzleSort]);
 
   useEffect(() => {
     getMyPuzzles()
@@ -378,6 +426,11 @@ export default function LobbyPage() {
     } finally {
       setAbandoningId(null);
     }
+  }
+
+  function handleSortChange(sort: PuzzleSortOption) {
+    setPuzzleSort(sort);
+    setPuzzlePage(1);
   }
 
   async function handleDeletePuzzle(puzzleId: string, title: string) {
@@ -543,41 +596,81 @@ export default function LobbyPage() {
 
         {/* Available puzzles */}
         <div style={s.section}>
-          <h2 style={s.sectionTitle}>Start a new game</h2>
+          <div style={s.sectionHeader}>
+            <h2 style={s.sectionTitle}>
+              Start a new game
+              {!loadingPuzzles && puzzleTotal > 0 && (
+                <span style={s.puzzleCount}> · {puzzleTotal} {puzzleTotal === 1 ? "puzzle" : "puzzles"}</span>
+              )}
+            </h2>
+          </div>
+          <div style={s.sortRow}>
+            <span style={s.sortLabel}>Sort:</span>
+            {(["newest", "most_played", "most_difficult", "most_enjoyable"] as PuzzleSortOption[]).map((opt) => (
+              <button
+                key={opt}
+                style={sortBtnStyle(puzzleSort === opt)}
+                onClick={() => handleSortChange(opt)}
+              >
+                {opt === "newest" ? "Newest" : opt === "most_played" ? "Most Played" : opt === "most_difficult" ? "Most Difficult" : "Most Enjoyable"}
+              </button>
+            ))}
+          </div>
           {puzzleError && <div style={s.error}>{puzzleError}</div>}
           {loadingPuzzles ? (
             <div style={s.loading}>Loading puzzles…</div>
           ) : (
-            <div style={s.puzzleList}>
-              {puzzles.map((puzzle) => (
-                <div key={puzzle.id}>
-                  <div style={s.puzzleCard}>
-                    <div style={s.puzzleInfo}>
-                      <div style={s.puzzleTitle}>{puzzle.title}</div>
-                      <div style={s.puzzleMeta}>
-                        By {puzzle.author} · {puzzle.width}×{puzzle.height}
-                      </div>
-                      {((puzzle.playCount ?? 0) > 0 || (puzzle.ratingCount ?? 0) > 0) && (
-                        <div style={s.puzzleStats}>
-                          {puzzle.playCount ?? 0} {(puzzle.playCount ?? 0) === 1 ? "play" : "plays"}
-                          {(puzzle.ratingCount ?? 0) > 0 && ` · ${puzzle.averageDifficulty?.toFixed(1)} diff · ${puzzle.averageEnjoyment?.toFixed(1)} enjoy · ${puzzle.ratingCount} ${puzzle.ratingCount === 1 ? "rating" : "ratings"}`}
+            <>
+              <div style={s.puzzleList}>
+                {puzzles.map((puzzle) => (
+                  <div key={puzzle.id}>
+                    <div style={s.puzzleCard}>
+                      <div style={s.puzzleInfo}>
+                        <div style={s.puzzleTitle}>{puzzle.title}</div>
+                        <div style={s.puzzleMeta}>
+                          By {puzzle.author} · {puzzle.width}×{puzzle.height}
                         </div>
-                      )}
+                        {((puzzle.playCount ?? 0) > 0 || (puzzle.ratingCount ?? 0) > 0) && (
+                          <div style={s.puzzleStats}>
+                            {puzzle.playCount ?? 0} {(puzzle.playCount ?? 0) === 1 ? "play" : "plays"}
+                            {(puzzle.ratingCount ?? 0) > 0 && ` · ${puzzle.averageDifficulty?.toFixed(1)} diff · ${puzzle.averageEnjoyment?.toFixed(1)} enjoy · ${puzzle.ratingCount} ${puzzle.ratingCount === 1 ? "rating" : "ratings"}`}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        style={s.createBtn}
+                        onClick={() => handleCreateGame(puzzle.id)}
+                        disabled={creatingId === puzzle.id}
+                      >
+                        {creatingId === puzzle.id ? "Creating…" : "Create game"}
+                      </button>
                     </div>
-                    <button
-                      style={s.createBtn}
-                      onClick={() => handleCreateGame(puzzle.id)}
-                      disabled={creatingId === puzzle.id}
-                    >
-                      {creatingId === puzzle.id ? "Creating…" : "Create game"}
-                    </button>
+                    {createError?.id === puzzle.id && (
+                      <div style={s.error}>{createError.msg}</div>
+                    )}
                   </div>
-                  {createError?.id === puzzle.id && (
-                    <div style={s.error}>{createError.msg}</div>
-                  )}
+                ))}
+              </div>
+              {puzzleTotalPages > 1 && (
+                <div style={s.paginationRow}>
+                  <button
+                    style={pageBtnStyle(puzzlePage <= 1)}
+                    disabled={puzzlePage <= 1}
+                    onClick={() => setPuzzlePage((p) => p - 1)}
+                  >
+                    ← Prev
+                  </button>
+                  <span>Page {puzzlePage} of {puzzleTotalPages}</span>
+                  <button
+                    style={pageBtnStyle(puzzlePage >= puzzleTotalPages)}
+                    disabled={puzzlePage >= puzzleTotalPages}
+                    onClick={() => setPuzzlePage((p) => p + 1)}
+                  >
+                    Next →
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -40,7 +40,10 @@ Base path: `/api`
 |--------|------|-------------|---------------|
 | POST | `/auth/register` | `{ email, displayName, password }` | `{ user: User, token: string }` |
 | POST | `/auth/login` | `{ email, password }` | `{ user: User, token: string }` |
-| GET | `/puzzles` | — | `{ puzzles: Puzzle[] }` |
+| GET | `/puzzles` | — | `{ puzzles: Puzzle[], total: number, page: number, limit: number, totalPages: number }` |
+| GET | `/puzzles` query params | `page` (int ≥1, default 1), `limit` (int 1–50, default 12), `sort` (`newest`\|`most_played`\|`most_difficult`\|`most_enjoyable`, default `newest`) | — |
+| GET | `/puzzles/mine` | — | `{ puzzles: Puzzle[], total: number, page: number, limit: number, totalPages: number }` |
+| GET | `/puzzles/mine` query params | `page` (int ≥1, default 1), `limit` (int 1–50, default 12) | — |
 | GET | `/puzzles/:id` | — | `{ puzzle: Puzzle }` |
 | POST | `/games` | `{ puzzleId: string }` | `{ game: Game }` |
 | POST | `/games/:id/join` | — | `{ participant: GameParticipant }` — 200 for new join or rejoin (idempotent); 400 if game is no longer active |

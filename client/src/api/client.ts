@@ -73,16 +73,27 @@ export function register(
 
 // ─── Puzzles ──────────────────────────────────────────────────────────────────
 
-export function getPuzzles(): Promise<ListPuzzlesResponse> {
-  return apiFetch<ListPuzzlesResponse>("/puzzles");
+export type PuzzleSortOption = "newest" | "most_played" | "most_difficult" | "most_enjoyable";
+
+export function getPuzzles(params: { page?: number; limit?: number; sort?: PuzzleSortOption } = {}): Promise<ListPuzzlesResponse> {
+  const q = new URLSearchParams();
+  if (params.page !== undefined) q.set("page", String(params.page));
+  if (params.limit !== undefined) q.set("limit", String(params.limit));
+  if (params.sort !== undefined) q.set("sort", params.sort);
+  const qs = q.toString();
+  return apiFetch<ListPuzzlesResponse>(`/puzzles${qs ? `?${qs}` : ""}`);
 }
 
 export function getPuzzle(id: string): Promise<GetPuzzleResponse> {
   return apiFetch<GetPuzzleResponse>(`/puzzles/${id}`);
 }
 
-export function getMyPuzzles(): Promise<ListPuzzlesResponse> {
-  return apiFetch<ListPuzzlesResponse>("/puzzles/mine");
+export function getMyPuzzles(params: { page?: number; limit?: number } = {}): Promise<ListPuzzlesResponse> {
+  const q = new URLSearchParams();
+  if (params.page !== undefined) q.set("page", String(params.page));
+  if (params.limit !== undefined) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return apiFetch<ListPuzzlesResponse>(`/puzzles/mine${qs ? `?${qs}` : ""}`);
 }
 
 interface PuzzlePayload {

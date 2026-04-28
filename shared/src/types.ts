@@ -190,6 +190,10 @@ export interface LoginResponse {
 // GET /api/puzzles
 export interface ListPuzzlesResponse {
   puzzles: Puzzle[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 // GET /api/puzzles/:id
