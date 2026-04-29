@@ -16,6 +16,8 @@ interface Props {
   showContributions?: boolean;
   showColors?: boolean;
   lockCorrect?: boolean;
+  lockWord?: boolean;
+  skipFilled?: boolean;
   readOnly?: boolean;
   onCellFill?: (row: number, col: number, value: string) => void;
   onCursorMove?: (row: number, col: number) => void;
@@ -85,6 +87,8 @@ export default function CrosswordGrid({
   showContributions = false,
   showColors = true,
   lockCorrect = false,
+  lockWord = false,
+  skipFilled = false,
   readOnly = false,
   onCellFill,
   onCursorMove,
@@ -168,10 +172,27 @@ export default function CrosswordGrid({
     return result;
   }, [selected, direction, grid, width, height]);
 
+  const lockedWordCells = useMemo((): Set<string> => {
+    if (!lockWord) return new Set();
+    const locked = new Set<string>();
+    for (const word of [...acrossClues, ...downClues]) {
+      if (word.cells.every(([r, c]) => {
+        const v = cellValueMap.get(`${r},${c}`);
+        return v !== undefined && v.toUpperCase() === grid[r][c]?.toUpperCase();
+      })) {
+        for (const [r, c] of word.cells) locked.add(`${r},${c}`);
+      }
+    }
+    return locked;
+  }, [lockWord, acrossClues, downClues, cellValueMap, grid]);
+
   function isCellLocked(row: number, col: number): boolean {
-    if (!lockCorrect) return false;
-    const value = cellValueMap.get(`${row},${col}`);
-    return !!(value && value.toUpperCase() === grid[row][col]?.toUpperCase());
+    if (lockCorrect) {
+      const value = cellValueMap.get(`${row},${col}`);
+      if (value && value.toUpperCase() === grid[row][col]?.toUpperCase()) return true;
+    }
+    if (lockWord && lockedWordCells.has(`${row},${col}`)) return true;
+    return false;
   }
 
   // ── Navigation helpers ──────────────────────────────────────────────────────
@@ -219,6 +240,47 @@ export default function CrosswordGrid({
     return null;
   }
 
+  // After typing: advance to next empty cell within the current word only
+  function nextEmptyInWord(row: number, col: number, dir: Direction): CursorPos | null {
+    if (dir === "across") {
+      for (let c = col + 1; c < width && grid[row][c] !== null; c++) {
+        if (!cellValueMap.has(`${row},${c}`)) return { row, col: c };
+      }
+    } else {
+      for (let r = row + 1; r < height && grid[r][col] !== null; r++) {
+        if (!cellValueMap.has(`${r},${col}`)) return { row: r, col };
+      }
+    }
+    return null;
+  }
+
+  // Arrow navigation: skip filled cells across the whole row/column
+  function nextEmptyCellDir(row: number, col: number, dir: Direction): CursorPos | null {
+    if (dir === "across") {
+      for (let c = col + 1; c < width; c++) {
+        if (grid[row][c] !== null && !cellValueMap.has(`${row},${c}`)) return { row, col: c };
+      }
+    } else {
+      for (let r = row + 1; r < height; r++) {
+        if (grid[r][col] !== null && !cellValueMap.has(`${r},${col}`)) return { row: r, col };
+      }
+    }
+    return null;
+  }
+
+  function prevEmptyCellDir(row: number, col: number, dir: Direction): CursorPos | null {
+    if (dir === "across") {
+      for (let c = col - 1; c >= 0; c--) {
+        if (grid[row][c] !== null && !cellValueMap.has(`${row},${c}`)) return { row, col: c };
+      }
+    } else {
+      for (let r = row - 1; r >= 0; r--) {
+        if (grid[r][col] !== null && !cellValueMap.has(`${r},${col}`)) return { row: r, col };
+      }
+    }
+    return null;
+  }
+
   // ── Clue selection ──────────────────────────────────────────────────────────
 
   function selectClue(clueCells: [number, number][], dir: Direction) {
@@ -255,28 +317,36 @@ export default function CrosswordGrid({
     if (e.key === "ArrowRight") {
       e.preventDefault();
       setDirection("across");
-      const next = nextWhiteCell(row, col, "across");
+      const next = skipFilled
+        ? (nextEmptyCellDir(row, col, "across") ?? nextWhiteCell(row, col, "across"))
+        : nextWhiteCell(row, col, "across");
       if (next) { setSelected(next); onCursorMove?.(next.row, next.col); }
       return;
     }
     if (e.key === "ArrowLeft") {
       e.preventDefault();
       setDirection("across");
-      const prev = prevWhiteCell(row, col, "across");
+      const prev = skipFilled
+        ? (prevEmptyCellDir(row, col, "across") ?? prevWhiteCell(row, col, "across"))
+        : prevWhiteCell(row, col, "across");
       if (prev) { setSelected(prev); onCursorMove?.(prev.row, prev.col); }
       return;
     }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setDirection("down");
-      const next = nextWhiteCell(row, col, "down");
+      const next = skipFilled
+        ? (nextEmptyCellDir(row, col, "down") ?? nextWhiteCell(row, col, "down"))
+        : nextWhiteCell(row, col, "down");
       if (next) { setSelected(next); onCursorMove?.(next.row, next.col); }
       return;
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
       setDirection("down");
-      const prev = prevWhiteCell(row, col, "down");
+      const prev = skipFilled
+        ? (prevEmptyCellDir(row, col, "down") ?? prevWhiteCell(row, col, "down"))
+        : prevWhiteCell(row, col, "down");
       if (prev) { setSelected(prev); onCursorMove?.(prev.row, prev.col); }
       return;
     }
@@ -309,7 +379,9 @@ export default function CrosswordGrid({
       if (isCellLocked(row, col)) return;
       const letter = e.key.toUpperCase();
       onCellFill?.(row, col, letter);
-      const next = nextWhiteCell(row, col, direction);
+      const next = skipFilled
+        ? nextEmptyInWord(row, col, direction)
+        : nextWhiteCell(row, col, direction);
       if (next) {
         setSelected(next);
         onCursorMove?.(next.row, next.col);
@@ -354,7 +426,9 @@ export default function CrosswordGrid({
     const { row, col } = selected;
     if (isCellLocked(row, col)) return;
     onCellFill?.(row, col, char.toUpperCase());
-    const next = nextWhiteCell(row, col, direction);
+    const next = skipFilled
+      ? nextEmptyInWord(row, col, direction)
+      : nextWhiteCell(row, col, direction);
     if (next) {
       setSelected(next);
       onCursorMove?.(next.row, next.col);

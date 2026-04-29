@@ -113,6 +113,8 @@ export default function GamePage() {
   const [showContributions, setShowContributions] = useState(false);
   const [showColors, setShowColors] = useState(true);
   const [lockCorrect, setLockCorrect] = useState(false);
+  const [lockWord, setLockWord] = useState(false);
+  const [skipFilled, setSkipFilled] = useState(false);
   const [abandonLoading, setAbandonLoading] = useState(false);
 
   // ── Spectator state ──────────────────────────────────────────────────────────
@@ -529,6 +531,28 @@ export default function GamePage() {
       fontSize: "0.75rem",
       transition: "background 0.2s, border-color 0.2s",
     },
+    lockWordToggleBtn: {
+      background: lockWord ? "rgba(168,85,247,0.3)" : "none",
+      color: "#fff",
+      border: `1px solid ${lockWord ? "rgba(168,85,247,0.7)" : "rgba(255,255,255,0.4)"}`,
+      borderRadius: "6px",
+      padding: "0 0.6rem",
+      minHeight: "44px",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s, border-color 0.2s",
+    },
+    skipFilledToggleBtn: {
+      background: skipFilled ? "rgba(14,165,233,0.3)" : "none",
+      color: "#fff",
+      border: `1px solid ${skipFilled ? "rgba(14,165,233,0.7)" : "rgba(255,255,255,0.4)"}`,
+      borderRadius: "6px",
+      padding: "0 0.6rem",
+      minHeight: "44px",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s, border-color 0.2s",
+    },
     content: {
       maxWidth: "980px",
       margin: "0 auto",
@@ -909,6 +933,12 @@ export default function GamePage() {
               <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => !prev)} title="Prevent correct letters from being overwritten">
                 {lockCorrect ? "Protect" : "Protect off"}
               </button>
+              <button style={s.lockWordToggleBtn} onClick={() => setLockWord(prev => !prev)} title="Lock entire word when all letters are correct">
+                {lockWord ? "Lock Word" : "Lock Word off"}
+              </button>
+              <button style={s.skipFilledToggleBtn} onClick={() => setSkipFilled(prev => !prev)} title="Automatically skip over filled cells when typing">
+                {skipFilled ? "Skip Filled" : "Skip Filled off"}
+              </button>
               <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
                 {showContributions ? "Hide contributions" : "Show contributions"}
               </button>
@@ -937,6 +967,8 @@ export default function GamePage() {
             showContributions={showContributions}
             showColors={showColors}
             lockCorrect={lockCorrect}
+            lockWord={lockWord}
+            skipFilled={skipFilled}
             readOnly={isSpectating}
             onCellFill={isSpectating ? undefined : handleCellFill}
             onCursorMove={isSpectating ? undefined : handleCursorMove}
