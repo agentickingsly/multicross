@@ -510,44 +510,60 @@ export function registerWsHandlers(io: CrosswordServer): void {
     });
 
     // -----------------------------------------------------------------------
-    // disconnect
+    // disconnecting — fires before socket leaves its rooms (s.rooms still populated)
+    // disconnect  — fires after; s.rooms is empty by then (Socket.io v4 behaviour)
+    //
+    // Spectator cleanup runs here using s.data.spectatingGames directly — we own
+    // that Set so we don't need s.rooms at all.  Participant cleanup also runs here
+    // so that s.rooms is still accessible for the fallback path (unexpected drops
+    // where the client never emitted leave_room).
     // -----------------------------------------------------------------------
-    s.on("disconnect", async () => {
-      logger.info(`[ws] Socket disconnected: ${s.id}`);
+    s.on("disconnecting", async () => {
+      logger.info(`[ws] Socket disconnecting: ${s.id}`);
       const userId = s.data?.user?.userId;
       if (!userId) return;
 
-      for (const gameId of s.rooms) {
-        if (gameId === s.id) continue; // skip the socket's own default room
+      // Spectator cleanup — iterate our own Set, not s.rooms, for reliability.
+      for (const gameId of (s.data.spectatingGames ?? [])) {
         try {
-          if (s.data.spectatingGames?.has(gameId)) {
-            // Spectator disconnect — update spectator count
-            await removeSpectator(gameId, s.id);
-            const count = await getSpectatorCount(gameId);
-            const spectatorCountPayload = { gameId, count };
-            io.to(gameId).emit("spectator_count", spectatorCountPayload);
-            await pub.publish(
-              `channel:game:${gameId}`,
-              JSON.stringify({ event: "spectator_count", payload: spectatorCountPayload, sourceSocketId: s.id })
-            );
-          } else {
-            // Participant disconnect
-            await removeParticipant(gameId, userId);
-            const participantLeftPayload = { userId };
-            io.to(gameId).emit("participant_left", participantLeftPayload);
-            await pub.publish(
-              `channel:game:${gameId}`,
-              JSON.stringify({
-                event: "participant_left",
-                payload: participantLeftPayload,
-                sourceSocketId: s.id,
-              })
-            );
-          }
+          await removeSpectator(gameId, s.id);
+          const count = await getSpectatorCount(gameId);
+          const spectatorCountPayload = { gameId, count };
+          io.to(gameId).emit("spectator_count", spectatorCountPayload);
+          await pub.publish(
+            `channel:game:${gameId}`,
+            JSON.stringify({ event: "spectator_count", payload: spectatorCountPayload, sourceSocketId: s.id })
+          );
         } catch (err) {
-          logger.error({ err }, `[ws] disconnect cleanup error for game ${gameId}`);
+          logger.error({ err }, `[ws] spectator disconnecting cleanup error for game ${gameId}`);
         }
       }
+
+      // Participant cleanup (fallback for unexpected drops — normal flow uses leave_room).
+      // s.rooms is still populated here because we're on "disconnecting", not "disconnect".
+      for (const gameId of s.rooms) {
+        if (gameId === s.id) continue; // skip socket's own default room
+        if (s.data.spectatingGames?.has(gameId)) continue; // already handled above
+        try {
+          await removeParticipant(gameId, userId);
+          const participantLeftPayload = { userId };
+          io.to(gameId).emit("participant_left", participantLeftPayload);
+          await pub.publish(
+            `channel:game:${gameId}`,
+            JSON.stringify({
+              event: "participant_left",
+              payload: participantLeftPayload,
+              sourceSocketId: s.id,
+            })
+          );
+        } catch (err) {
+          logger.error({ err }, `[ws] participant disconnecting cleanup error for game ${gameId}`);
+        }
+      }
+    });
+
+    s.on("disconnect", () => {
+      logger.info(`[ws] Socket disconnected: ${s.id}`);
     });
   });
 }
