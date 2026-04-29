@@ -18,7 +18,7 @@ import type {
   SpectatorCountPayload,
 } from "@multicross/shared";
 import type { PuzzleStats } from "@multicross/shared";
-import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer, joinGameById } from "../api/client";
+import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer, joinGameById, getSpectatorCount } from "../api/client";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
 import ReplayControls from "../components/ReplayControls";
@@ -167,6 +167,10 @@ export default function GamePage() {
           setIsLiveGame(false);
         } else {
           setIsLiveGame(true);
+          // Fetch initial spectator count so the header is correct before any WS event arrives
+          getSpectatorCount(game.id)
+            .then(({ count }) => { if (!cancelled) setSpectatorCount(count); })
+            .catch(() => {});
         }
 
         const { puzzle } = await getPuzzle(game.puzzleId);
@@ -891,6 +895,9 @@ export default function GamePage() {
             </>
           ) : (
             <>
+              {spectatorCount > 0 && (
+                <span style={s.spectatorCount}>👁 {spectatorCount} watching</span>
+              )}
               <span style={{ fontSize: "0.8rem", color: "#93c5fd" }}>Room</span>
               <span style={s.roomCode}>{game.roomCode}</span>
               <button style={s.copyBtn} onClick={handleCopyRoomCode}>
