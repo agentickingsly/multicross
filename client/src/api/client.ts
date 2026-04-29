@@ -136,12 +136,29 @@ export interface ActiveGame {
   participantCount: number;
 }
 
+export interface WatchableGame extends ActiveGame {
+  puzzleId: string;
+}
+
 export function getMyActiveGames(): Promise<{ games: ActiveGame[] }> {
   return apiFetch<{ games: ActiveGame[] }>("/games/my-active");
 }
 
-export function getGame(gameId: string): Promise<GetGameResponse> {
-  return apiFetch<GetGameResponse>(`/games/${gameId}`);
+export function getWatchableGames(): Promise<{ games: WatchableGame[] }> {
+  return apiFetch<{ games: WatchableGame[] }>("/games/watchable");
+}
+
+export function getSpectatorCount(gameId: string): Promise<{ count: number }> {
+  return apiFetch<{ count: number }>(`/games/${gameId}/spectators`);
+}
+
+export function joinGameById(gameId: string): Promise<{ participant: import("@multicross/shared").GameParticipant }> {
+  return apiFetch(`/games/${gameId}/join`, { method: "POST", body: JSON.stringify({}) });
+}
+
+export function getGame(gameId: string, opts?: { spectate?: boolean }): Promise<GetGameResponse> {
+  const qs = opts?.spectate ? "?spectate=true" : "";
+  return apiFetch<GetGameResponse>(`/games/${gameId}${qs}`);
 }
 
 export function abandonGame(gameId: string): Promise<{ success: boolean }> {

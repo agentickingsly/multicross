@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useWindowWidth } from "../utils/useWindowWidth";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import type {
   Game,
   Puzzle,
@@ -15,9 +15,10 @@ import type {
   ParticipantJoinedPayload,
   ParticipantLeftPayload,
   RoomJoinedPayload,
+  SpectatorCountPayload,
 } from "@multicross/shared";
 import type { PuzzleStats } from "@multicross/shared";
-import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer } from "../api/client";
+import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer, joinGameById } from "../api/client";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
 import ReplayControls from "../components/ReplayControls";
@@ -71,6 +72,8 @@ function formatDuration(ms: number): string {
 export default function GamePage() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isSpectating = searchParams.get("spectate") === "true";
 
   const currentUser: User | null = (() => {
     try {
@@ -112,6 +115,10 @@ export default function GamePage() {
   const [lockCorrect, setLockCorrect] = useState(false);
   const [abandonLoading, setAbandonLoading] = useState(false);
 
+  // ── Spectator state ──────────────────────────────────────────────────────────
+  const [spectatorCount, setSpectatorCount] = useState(0);
+  const [joiningFromSpectate, setJoiningFromSpectate] = useState(false);
+
   // ── Report state ─────────────────────────────────────────────────────────────
   const [reportTarget, setReportTarget] = useState<ParticipantWithName | null>(null);
   const [reportReason, setReportReason] = useState("");
@@ -145,7 +152,7 @@ export default function GamePage() {
     if (!gameId) return;
     let cancelled = false;
 
-    getGame(gameId)
+    getGame(gameId, isSpectating ? { spectate: true } : undefined)
       .then(async ({ game, participants, cells }) => {
         if (cancelled) return;
         setGame(game);
@@ -176,7 +183,7 @@ export default function GamePage() {
       });
 
     return () => { cancelled = true; };
-  }, [gameId]);
+  }, [gameId, isSpectating]);
 
   // ── Effect 2: connect WS only for live games ────────────────────────────────
   useEffect(() => {
@@ -184,19 +191,24 @@ export default function GamePage() {
     const token = localStorage.getItem("multicross_token") ?? "";
     ws.connect(token);
     return () => {
-      if (currentUser) ws.emit("leave_room", { gameId, userId: currentUser.id });
+      // Spectators don't emit leave_room — their socket disconnect handles cleanup
+      if (!isSpectating && currentUser) ws.emit("leave_room", { gameId, userId: currentUser.id });
       ws.disconnect();
     };
-  }, [isLiveGame, gameId]);
+  }, [isLiveGame, gameId, isSpectating]);
 
-  // ── Effect 3: join room on WS connect (and reconnect) ──────────────────────
+  // ── Effect 3: join/spectate room on WS connect (and reconnect) ─────────────
   useEffect(() => {
     if (isLiveGame !== true || !gameId || !currentUser) return;
     const unsub = ws.onConnect(() => {
-      ws.emit("join_room", { gameId, userId: currentUser.id });
+      if (isSpectating) {
+        ws.emit("spectate_room", { gameId });
+      } else {
+        ws.emit("join_room", { gameId, userId: currentUser.id });
+      }
     });
     return unsub;
-  }, [isLiveGame, gameId]);
+  }, [isLiveGame, gameId, isSpectating]);
 
   // ── Effect 4: restore cursor positions from room_joined ─────────────────────
   useEffect(() => {
@@ -212,6 +224,10 @@ export default function GamePage() {
   // ── Effect 5: WS event listeners ───────────────────────────────────────────
   useEffect(() => {
     if (isLiveGame !== true) return;
+
+    const unsubSpectatorCount = ws.on("spectator_count", (payload: SpectatorCountPayload) => {
+      if (payload.gameId === gameId) setSpectatorCount(payload.count);
+    });
 
     const unsubCursor = ws.on("cursor_moved", (payload: CursorMovedPayload) => {
       setCursors((prev) => ({
@@ -263,6 +279,7 @@ export default function GamePage() {
     });
 
     return () => {
+      unsubSpectatorCount();
       unsubCursor();
       unsubCell();
       unsubComplete();
@@ -380,6 +397,18 @@ export default function GamePage() {
       setReportError(err instanceof Error ? err.message : "Failed to submit report");
     } finally {
       setReportLoading(false);
+    }
+  }
+
+  async function handleJoinFromSpectate() {
+    if (!gameId) return;
+    setJoiningFromSpectate(true);
+    try {
+      await joinGameById(gameId);
+      navigate(`/game/${gameId}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to join game");
+      setJoiningFromSpectate(false);
     }
   }
 
@@ -639,6 +668,32 @@ export default function GamePage() {
       fontSize: "0.75rem",
       fontWeight: "600",
     },
+    spectatingBadge: {
+      background: "rgba(124,58,237,0.25)",
+      color: "#c4b5fd",
+      border: "1px solid rgba(124,58,237,0.5)",
+      borderRadius: "6px",
+      padding: "0.2rem 0.6rem",
+      fontSize: "0.75rem",
+      fontWeight: "600",
+    },
+    spectatorCount: {
+      background: "rgba(255,255,255,0.1)",
+      color: "#c4b5fd",
+      borderRadius: "6px",
+      padding: "0.2rem 0.6rem",
+      fontSize: "0.75rem",
+    },
+    joinFromSpectateBtn: {
+      background: "#059669",
+      color: "#fff",
+      border: "none",
+      borderRadius: "6px",
+      padding: "0.3rem 0.75rem",
+      cursor: "pointer",
+      fontSize: "0.8rem",
+      fontWeight: "600",
+    },
     lobbyBtn: {
       padding: "0.75rem 1.5rem",
       background: "#2563eb",
@@ -818,30 +873,48 @@ export default function GamePage() {
             ← Lobby
           </button>
           <div style={s.headerTitle}>{puzzle.title}</div>
+          {isSpectating && <span style={s.spectatingBadge}>Spectating</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <span style={{ fontSize: "0.8rem", color: "#93c5fd" }}>Room</span>
-          <span style={s.roomCode}>{game.roomCode}</span>
-          <button style={s.copyBtn} onClick={handleCopyRoomCode}>
-            {copied ? "Copied!" : "Copy"}
-          </button>
-          <button style={s.colorToggleBtn} onClick={() => setShowColors(prev => !prev)} title="Highlight correct letters in green">
-            {showColors ? "Check" : "Check off"}
-          </button>
-          <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => !prev)} title="Prevent correct letters from being overwritten">
-            {lockCorrect ? "Protect" : "Protect off"}
-          </button>
-          <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
-            {showContributions ? "Hide contributions" : "Show contributions"}
-          </button>
-          {currentUser?.id === game.createdBy && !gameEnded && game.status !== "complete" && (
-            <button
-              style={s.abandonBtn}
-              onClick={handleAbandon}
-              disabled={abandonLoading}
-            >
-              {abandonLoading ? "Abandoning…" : "Abandon game"}
-            </button>
+          {isSpectating ? (
+            <>
+              <span style={s.spectatorCount}>👁 {spectatorCount} watching</span>
+              {game.status === "waiting" && (
+                <button
+                  style={s.joinFromSpectateBtn}
+                  onClick={handleJoinFromSpectate}
+                  disabled={joiningFromSpectate}
+                >
+                  {joiningFromSpectate ? "Joining…" : "Join Game"}
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: "0.8rem", color: "#93c5fd" }}>Room</span>
+              <span style={s.roomCode}>{game.roomCode}</span>
+              <button style={s.copyBtn} onClick={handleCopyRoomCode}>
+                {copied ? "Copied!" : "Copy"}
+              </button>
+              <button style={s.colorToggleBtn} onClick={() => setShowColors(prev => !prev)} title="Highlight correct letters in green">
+                {showColors ? "Check" : "Check off"}
+              </button>
+              <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => !prev)} title="Prevent correct letters from being overwritten">
+                {lockCorrect ? "Protect" : "Protect off"}
+              </button>
+              <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
+                {showContributions ? "Hide contributions" : "Show contributions"}
+              </button>
+              {currentUser?.id === game.createdBy && !gameEnded && game.status !== "complete" && (
+                <button
+                  style={s.abandonBtn}
+                  onClick={handleAbandon}
+                  disabled={abandonLoading}
+                >
+                  {abandonLoading ? "Abandoning…" : "Abandon game"}
+                </button>
+              )}
+            </>
           )}
         </div>
       </header>
@@ -857,8 +930,9 @@ export default function GamePage() {
             showContributions={showContributions}
             showColors={showColors}
             lockCorrect={lockCorrect}
-            onCellFill={handleCellFill}
-            onCursorMove={handleCursorMove}
+            readOnly={isSpectating}
+            onCellFill={isSpectating ? undefined : handleCellFill}
+            onCursorMove={isSpectating ? undefined : handleCursorMove}
           />
 
           {showContributions && (
@@ -899,8 +973,8 @@ export default function GamePage() {
             ))}
           </div>
 
-          {/* My color */}
-          {myParticipant && (
+          {/* My color (non-spectators only) */}
+          {myParticipant && !isSpectating && (
             <div style={{ ...s.playerCard, fontSize: "0.8rem", color: "#64748b" }}>
               Your cursor color:
               <div
@@ -912,6 +986,13 @@ export default function GamePage() {
                   marginTop: "0.4rem",
                 }}
               />
+            </div>
+          )}
+
+          {/* Spectator count (spectator mode) */}
+          {isSpectating && spectatorCount > 0 && (
+            <div style={{ ...s.playerCard, fontSize: "0.8rem", color: "#64748b" }}>
+              👁 {spectatorCount} {spectatorCount === 1 ? "spectator" : "spectators"} watching
             </div>
           )}
 

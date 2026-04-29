@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import pool from "../db/pool";
-import { pub } from "../db/redis";
+import { pub, getSpectatorCount } from "../db/redis";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../logger";
 
@@ -209,6 +209,41 @@ router.patch("/:id/abandon", requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /api/games/watchable — active games the current user is NOT a participant of
+router.get("/watchable", requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const result = await pool.query(
+      `SELECT g.id, g.puzzle_id, g.room_code, g.status, g.created_at, p.title AS puzzle_title,
+              COUNT(gp.id)::int AS participant_count
+       FROM games g
+       JOIN puzzles p ON p.id = g.puzzle_id
+       LEFT JOIN game_participants gp ON gp.game_id = g.id
+       WHERE g.status IN ('waiting', 'active')
+         AND NOT EXISTS (
+           SELECT 1 FROM game_participants WHERE game_id = g.id AND user_id = $1
+         )
+       GROUP BY g.id, g.puzzle_id, g.room_code, g.status, g.created_at, p.title
+       ORDER BY g.created_at DESC
+       LIMIT 20`,
+      [userId]
+    );
+    res.json({
+      games: result.rows.map((r) => ({
+        id: r.id,
+        puzzleId: r.puzzle_id,
+        roomCode: r.room_code,
+        status: r.status,
+        createdAt: r.created_at,
+        puzzleTitle: r.puzzle_title,
+        participantCount: r.participant_count,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/games/my-active — games the current user is part of that aren't complete
 router.get("/my-active", requireAuth, async (req, res, next) => {
   try {
@@ -255,6 +290,27 @@ router.get("/", requireAuth, async (req, res, next) => {
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Game not found" }); return; }
     res.json({ game: { id: result.rows[0].id } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/games/:id/spectators — current spectator count (Redis-only, no DB)
+router.get("/:id/spectators", requireAuth, async (req, res, next) => {
+  try {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    if (!idParsed.success) {
+      res.status(400).json({ error: "Invalid game ID" });
+      return;
+    }
+    const gameId = idParsed.data;
+    const gameCheck = await pool.query("SELECT id FROM games WHERE id = $1", [gameId]);
+    if (!gameCheck.rows[0]) {
+      res.status(404).json({ error: "Game not found" });
+      return;
+    }
+    const count = await getSpectatorCount(gameId);
+    res.json({ count });
   } catch (err) {
     next(err);
   }
@@ -366,6 +422,7 @@ router.post("/:id/report", requireAuth, async (req, res, next) => {
 router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const gameId = req.params.id;
+    const isSpectate = req.query.spectate === "true";
 
     const gameResult = await pool.query(
       `SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
@@ -378,13 +435,15 @@ router.get("/:id", requireAuth, async (req, res, next) => {
     }
     const g = gameResult.rows[0];
 
-    const membership = await pool.query(
-      "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
-      [gameId, req.user!.userId]
-    );
-    if (!membership.rows[0]) {
-      res.status(404).json({ error: "Game not found" });
-      return;
+    if (!isSpectate) {
+      const membership = await pool.query(
+        "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+        [gameId, req.user!.userId]
+      );
+      if (!membership.rows[0]) {
+        res.status(404).json({ error: "Game not found" });
+        return;
+      }
     }
 
     const participantsResult = await pool.query(

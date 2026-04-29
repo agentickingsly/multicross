@@ -8,6 +8,7 @@
 | `game:{gameId}:participants` | Set | Ephemeral | Live presence — users currently connected. Cleared on disconnect. |
 | `game:{gameId}:cursors` | Hash | Ephemeral | Current cursor position per user. Cleared with the game. |
 | `game:{gameId}:cells` | Hash | Ephemeral | Current cell state for the board. Cleared with the game. |
+| `game:{gameId}:spectators` | Set | Ephemeral | Socket IDs currently spectating (not user IDs — one user can have multiple tabs). Cleared on disconnect and in `deleteGameKeys`. |
 
 ## Adding a new Redis key
 1. Add the pattern to the table above (name, type, lifetime, purpose).

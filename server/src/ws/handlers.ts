@@ -16,6 +16,9 @@ import {
   deleteGameKeys,
   isMember,
   addMember,
+  addSpectator,
+  removeSpectator,
+  getSpectatorCount,
 } from "../db/redis";
 
 // ---------------------------------------------------------------------------
@@ -23,6 +26,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const joinRoomSchema = z.object({ gameId: z.string().uuid() });
+const spectateRoomSchema = z.object({ gameId: z.string().uuid() });
 const fillCellSchema = z.object({
   gameId: z.string().uuid(),
   row: z.number().int().min(0).max(99),
@@ -47,6 +51,7 @@ const ALLOWED_EVENTS = new Set([
   "participant_left",
   "game_complete",
   "game_abandoned",
+  "spectator_count",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,8 @@ interface SocketData {
   user: JwtPayload;
   // Cache participant info per gameId for fast cursor broadcasts
   gameParticipants: Record<string, GameParticipant>;
+  // Set of gameIds this socket is watching as a spectator (not a participant)
+  spectatingGames: Set<string>;
 }
 
 type CrosswordServer = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -146,7 +153,7 @@ export function registerWsHandlers(io: CrosswordServer): void {
     }
     try {
       const payload = jwt.verify(token, secret, { algorithms: ["HS256"] }) as JwtPayload;
-      socket.data = { user: payload, gameParticipants: {} };
+      socket.data = { user: payload, gameParticipants: {}, spectatingGames: new Set() };
       next();
     } catch {
       next(new Error("Invalid or expired token"));
@@ -266,12 +273,86 @@ export function registerWsHandlers(io: CrosswordServer): void {
     });
 
     // -----------------------------------------------------------------------
+    // spectate_room
+    // No participant record is created — spectators receive all broadcasts
+    // but cannot mutate game state. Tracked in Redis game:{gameId}:spectators
+    // by socket ID (not userId) because the same user could spectate from
+    // multiple tabs.
+    // NOTE: integration-level — no unit tests cover this handler.
+    // -----------------------------------------------------------------------
+    s.on("spectate_room", async (data) => {
+      const parsed = spectateRoomSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { gameId } = parsed.data;
+      try {
+        const userId = s.data.user.userId;
+
+        // Reject if the user is already a participant — they should use join_room
+        const participantCheck = await pool.query(
+          "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+          [gameId, userId]
+        );
+        if (participantCheck.rows[0]) {
+          s.emit("error" as any, { error: "Already a participant — use join_room" });
+          return;
+        }
+
+        const gameResult = await pool.query(
+          `SELECT id, puzzle_id, room_code, status, created_by, started_at, completed_at, created_at
+           FROM games WHERE id = $1`,
+          [gameId]
+        );
+        if (!gameResult.rows[0]) {
+          s.emit("error" as any, { error: "Game not found" });
+          return;
+        }
+
+        await s.join(gameId);
+        await addSpectator(gameId, s.id);
+        s.data.spectatingGames.add(gameId);
+
+        subscribeToGameChannel(io, gameId);
+
+        const [participantsResult, cellsResult, cursors] = await Promise.all([
+          pool.query(
+            `SELECT id, game_id, user_id, joined_at, color FROM game_participants WHERE game_id = $1`,
+            [gameId]
+          ),
+          pool.query(
+            `SELECT id, game_id, row, col, value, filled_by, filled_at FROM game_cells WHERE game_id = $1`,
+            [gameId]
+          ),
+          getCursors(gameId),
+        ]);
+
+        const game = mapGameRow(gameResult.rows[0]);
+        const participants: GameParticipant[] = participantsResult.rows.map(mapParticipantRow);
+        const cells: GameCell[] = cellsResult.rows.map(mapCellRow);
+
+        s.emit("room_joined", { game, participants, cells, cursors });
+
+        // Broadcast updated spectator count to everyone in the room (including new spectator)
+        const count = await getSpectatorCount(gameId);
+        const spectatorCountPayload = { gameId, count };
+        io.to(gameId).emit("spectator_count", spectatorCountPayload);
+        await pub.publish(
+          `channel:game:${gameId}`,
+          JSON.stringify({ event: "spectator_count", payload: spectatorCountPayload, sourceSocketId: s.id })
+        );
+      } catch (err) {
+        logger.error({ err }, "[ws] spectate_room error");
+      }
+    });
+
+    // -----------------------------------------------------------------------
     // fill_cell
     // -----------------------------------------------------------------------
     s.on("fill_cell", async (data) => {
       const parsed = fillCellSchema.safeParse(data);
       if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
       const { gameId, row, col, value } = parsed.data;
+      // Silently ignore spectators — they have no participant record anyway
+      if (s.data.spectatingGames?.has(gameId)) return;
       try {
         const userId = s.data.user.userId;
         const memberCheck = await pool.query(
@@ -355,6 +436,8 @@ export function registerWsHandlers(io: CrosswordServer): void {
       const parsed = moveCursorSchema.safeParse(data);
       if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
       const { gameId, row, col } = parsed.data;
+      // Silently ignore spectators
+      if (s.data.spectatingGames?.has(gameId)) return;
       try {
         const userId = s.data.user.userId;
         const memberCheck = await pool.query(
@@ -434,22 +517,33 @@ export function registerWsHandlers(io: CrosswordServer): void {
       const userId = s.data?.user?.userId;
       if (!userId) return;
 
-      // Clean up all rooms this socket was participating in
       for (const gameId of s.rooms) {
         if (gameId === s.id) continue; // skip the socket's own default room
         try {
-          await removeParticipant(gameId, userId);
-          const participantLeftPayload = { userId };
-          io.to(gameId).emit("participant_left", participantLeftPayload);
-
-          await pub.publish(
-            `channel:game:${gameId}`,
-            JSON.stringify({
-              event: "participant_left",
-              payload: participantLeftPayload,
-              sourceSocketId: s.id,
-            })
-          );
+          if (s.data.spectatingGames?.has(gameId)) {
+            // Spectator disconnect — update spectator count
+            await removeSpectator(gameId, s.id);
+            const count = await getSpectatorCount(gameId);
+            const spectatorCountPayload = { gameId, count };
+            io.to(gameId).emit("spectator_count", spectatorCountPayload);
+            await pub.publish(
+              `channel:game:${gameId}`,
+              JSON.stringify({ event: "spectator_count", payload: spectatorCountPayload, sourceSocketId: s.id })
+            );
+          } else {
+            // Participant disconnect
+            await removeParticipant(gameId, userId);
+            const participantLeftPayload = { userId };
+            io.to(gameId).emit("participant_left", participantLeftPayload);
+            await pub.publish(
+              `channel:game:${gameId}`,
+              JSON.stringify({
+                event: "participant_left",
+                payload: participantLeftPayload,
+                sourceSocketId: s.id,
+              })
+            );
+          }
         } catch (err) {
           logger.error({ err }, `[ws] disconnect cleanup error for game ${gameId}`);
         }

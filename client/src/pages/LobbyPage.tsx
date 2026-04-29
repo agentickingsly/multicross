@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { useWindowWidth } from "../utils/useWindowWidth";
 import { useNavigate } from "react-router-dom";
 import type { Puzzle, User } from "@multicross/shared";
-import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle, getMyActiveGames, abandonGame } from "../api/client";
-import type { ActiveGame, PuzzleSortOption } from "../api/client";
+import { getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle, getMyActiveGames, abandonGame, getWatchableGames } from "../api/client";
+import type { ActiveGame, WatchableGame, PuzzleSortOption } from "../api/client";
 
 const s: Record<string, React.CSSProperties> = {
   page: {
@@ -272,6 +272,26 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "0.8rem",
     flexShrink: 0,
   },
+  watchBtn: {
+    background: "transparent",
+    color: "#7c3aed",
+    border: "1.5px solid #c4b5fd",
+    borderRadius: "6px",
+    padding: "0.5rem 1rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.875rem",
+    whiteSpace: "nowrap" as const,
+  },
+  spectatingBadge: {
+    fontSize: "0.7rem",
+    fontWeight: "700",
+    padding: "0.15rem 0.45rem",
+    borderRadius: "4px",
+    background: "#ede9fe",
+    color: "#5b21b6",
+    marginLeft: "0.25rem",
+  },
 };
 
 function sortBtnStyle(active: boolean): React.CSSProperties {
@@ -326,6 +346,9 @@ export default function LobbyPage() {
   const [abandoningId, setAbandoningId] = useState<string | null>(null);
   const [abandonError, setAbandonError] = useState<{ id: string; msg: string } | null>(null);
 
+  const [watchableGames, setWatchableGames] = useState<WatchableGame[]>([]);
+  const [loadingWatchable, setLoadingWatchable] = useState(true);
+
   const currentUser: User | null = (() => {
     try {
       return JSON.parse(localStorage.getItem("multicross_user") ?? "null");
@@ -363,6 +386,18 @@ export default function LobbyPage() {
     }
     fetchActiveGames();
     const interval = setInterval(fetchActiveGames, 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    function fetchWatchable() {
+      getWatchableGames()
+        .then(({ games }) => setWatchableGames(games))
+        .catch(() => {})
+        .finally(() => setLoadingWatchable(false));
+    }
+    fetchWatchable();
+    const interval = setInterval(fetchWatchable, 30_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -594,6 +629,35 @@ export default function LobbyPage() {
           </p>
         </div>
 
+        {/* Watch a game in progress */}
+        {(!loadingWatchable && watchableGames.length > 0) && (
+          <div style={s.section}>
+            <h2 style={s.sectionTitle}>Watch a game</h2>
+            <div style={s.puzzleList}>
+              {watchableGames.map((game) => (
+                <div key={game.id} style={s.activeGameCard} onClick={() => navigate(`/game/${game.id}?spectate=true`)}>
+                  <div style={s.activeGameInfo}>
+                    <div style={s.activeGameTitle}>{game.puzzleTitle}</div>
+                    <div style={s.activeGameMeta}>
+                      {game.participantCount} player{game.participantCount !== 1 ? "s" : ""}
+                      {" · "}
+                      <span style={{ textTransform: "capitalize" }}>{game.status}</span>
+                      {" · "}
+                      Room {game.roomCode}
+                    </div>
+                  </div>
+                  <button
+                    style={s.watchBtn}
+                    onClick={(e) => { e.stopPropagation(); navigate(`/game/${game.id}?spectate=true`); }}
+                  >
+                    Watch
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Available puzzles */}
         <div style={s.section}>
           <div style={s.sectionHeader}>
@@ -622,34 +686,56 @@ export default function LobbyPage() {
           ) : (
             <>
               <div style={s.puzzleList}>
-                {puzzles.map((puzzle) => (
-                  <div key={puzzle.id}>
-                    <div style={s.puzzleCard}>
-                      <div style={s.puzzleInfo}>
-                        <div style={s.puzzleTitle}>{puzzle.title}</div>
-                        <div style={s.puzzleMeta}>
-                          By {puzzle.author} · {puzzle.width}×{puzzle.height}
-                        </div>
-                        {((puzzle.playCount ?? 0) > 0 || (puzzle.ratingCount ?? 0) > 0) && (
-                          <div style={s.puzzleStats}>
-                            {puzzle.playCount ?? 0} {(puzzle.playCount ?? 0) === 1 ? "play" : "plays"}
-                            {(puzzle.ratingCount ?? 0) > 0 && ` · ${puzzle.averageDifficulty?.toFixed(1)} diff · ${puzzle.averageEnjoyment?.toFixed(1)} enjoy · ${puzzle.ratingCount} ${puzzle.ratingCount === 1 ? "rating" : "ratings"}`}
+                {(() => {
+                  // First watchable game per puzzle keyed by puzzleId
+                  const watchableForPuzzle = new Map<string, WatchableGame>();
+                  for (const g of watchableGames) {
+                    if (!watchableForPuzzle.has(g.puzzleId)) {
+                      watchableForPuzzle.set(g.puzzleId, g);
+                    }
+                  }
+                  return puzzles.map((puzzle) => {
+                    const watchableGame = watchableForPuzzle.get(puzzle.id);
+                    return (
+                      <div key={puzzle.id}>
+                        <div style={s.puzzleCard}>
+                          <div style={s.puzzleInfo}>
+                            <div style={s.puzzleTitle}>{puzzle.title}</div>
+                            <div style={s.puzzleMeta}>
+                              By {puzzle.author} · {puzzle.width}×{puzzle.height}
+                            </div>
+                            {((puzzle.playCount ?? 0) > 0 || (puzzle.ratingCount ?? 0) > 0) && (
+                              <div style={s.puzzleStats}>
+                                {puzzle.playCount ?? 0} {(puzzle.playCount ?? 0) === 1 ? "play" : "plays"}
+                                {(puzzle.ratingCount ?? 0) > 0 && ` · ${puzzle.averageDifficulty?.toFixed(1)} diff · ${puzzle.averageEnjoyment?.toFixed(1)} enjoy · ${puzzle.ratingCount} ${puzzle.ratingCount === 1 ? "rating" : "ratings"}`}
+                              </div>
+                            )}
                           </div>
+                          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                            {watchableGame && (
+                              <button
+                                style={s.watchBtn}
+                                onClick={() => navigate(`/game/${watchableGame.id}?spectate=true`)}
+                              >
+                                Watch
+                              </button>
+                            )}
+                            <button
+                              style={s.createBtn}
+                              onClick={() => handleCreateGame(puzzle.id)}
+                              disabled={creatingId === puzzle.id}
+                            >
+                              {creatingId === puzzle.id ? "Creating…" : "Create game"}
+                            </button>
+                          </div>
+                        </div>
+                        {createError?.id === puzzle.id && (
+                          <div style={s.error}>{createError.msg}</div>
                         )}
                       </div>
-                      <button
-                        style={s.createBtn}
-                        onClick={() => handleCreateGame(puzzle.id)}
-                        disabled={creatingId === puzzle.id}
-                      >
-                        {creatingId === puzzle.id ? "Creating…" : "Create game"}
-                      </button>
-                    </div>
-                    {createError?.id === puzzle.id && (
-                      <div style={s.error}>{createError.msg}</div>
-                    )}
-                  </div>
-                ))}
+                    );
+                  });
+                })()}
               </div>
               {puzzleTotalPages > 1 && (
                 <div style={s.paginationRow}>

@@ -14,8 +14,9 @@ All events are typed in `/shared/src/types.ts`.
 | Event | Payload |
 |-------|---------|
 | `join_room` | `{ gameId: string, userId: string }` |
-| `fill_cell` | `{ gameId: string, row: number, col: number, value: string, userId: string }` |
-| `move_cursor` | `{ gameId: string, row: number, col: number, userId: string }` |
+| `spectate_room` | `{ gameId: string }` — join as spectator; does NOT create a participant record or add to Redis members/participants |
+| `fill_cell` | `{ gameId: string, row: number, col: number, value: string, userId: string }` — silently ignored for spectators |
+| `move_cursor` | `{ gameId: string, row: number, col: number, userId: string }` — silently ignored for spectators |
 | `leave_room` | `{ gameId: string, userId: string }` |
 
 ### Server → Client
@@ -29,6 +30,7 @@ All events are typed in `/shared/src/types.ts`.
 | `participant_left` | `{ userId: string }` |
 | `game_complete` | `{ completedAt: string, stats: { userId: string, cellsFilled: number }[] }` |
 | `game_abandoned` | `{ gameId: string }` |
+| `spectator_count` | `{ gameId: string, count: number }` — broadcast to all room members when spectator count changes |
 
 ---
 
@@ -49,7 +51,9 @@ Base path: `/api`
 | POST | `/games/:id/join` | — | `{ participant: GameParticipant }` — 200 for new join or rejoin (idempotent); 400 if game is no longer active |
 | PATCH | `/games/:id/abandon` | — | `{ success: true }` — creator only; 403 for others; 400 if already finished |
 | GET | `/games/my-active` | — | `{ games: ActiveGame[] }` — caller's waiting/active games only |
-| GET | `/games/:id` | — | `{ game: Game, participants: GameParticipant[], cells: GameCell[] }` |
+| GET | `/games/:id` | — | `{ game: Game, participants: GameParticipant[], cells: GameCell[] }` — add `?spectate=true` to skip participant membership check |
+| GET | `/games/:id/spectators` | — | `{ count: number }` — current spectator count from Redis |
+| GET | `/games/watchable` | — | `{ games: ActiveGame[] }` — active/waiting games the current user is NOT a participant of (max 20) |
 | GET | `/games/:id/history` | — | `{ moves: GameMove[], hasFull: boolean }` — participant only; `hasFull` is true when full move history exists, false for games played before move recording was added |
 | GET | `/puzzles/:id/stats` | — | `{ stats: PuzzleStats, userRating: { difficulty, enjoyment } \| null }` |
 | POST | `/puzzles/:id/rate` | `{ difficulty: 1-5, enjoyment: 1-5 }` | `{ stats: PuzzleStats }` |
@@ -84,6 +88,7 @@ See `/docs/redis.md` for full details.
 | `game:{gameId}:cursors` | Hash | Cursor positions: field = `{userId}`, value = `{ row, col }` JSON |
 | `game:{gameId}:participants` | Set | Set of `userId` strings currently active in the room |
 | `game:{gameId}:members` | Set | Permanent set of `userId` strings who have ever joined via WS (used for rejoin detection) |
+| `game:{gameId}:spectators` | Set | Set of socket IDs currently watching the game as spectators (ephemeral, cleared on game end) |
 | `channel:game:{gameId}` | Pub/Sub channel | Used to broadcast events to all server instances |
 
 ---

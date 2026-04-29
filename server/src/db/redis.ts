@@ -116,6 +116,23 @@ export async function addMember(gameId: string, userId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// game:{gameId}:spectators helpers
+// Set of socket IDs currently watching this game as spectators.
+// ---------------------------------------------------------------------------
+
+export async function addSpectator(gameId: string, socketId: string): Promise<void> {
+  await redis.sadd(`game:${gameId}:spectators`, socketId);
+}
+
+export async function removeSpectator(gameId: string, socketId: string): Promise<void> {
+  await redis.srem(`game:${gameId}:spectators`, socketId);
+}
+
+export async function getSpectatorCount(gameId: string): Promise<number> {
+  return redis.scard(`game:${gameId}:spectators`);
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup: delete all keys for a game
 // ---------------------------------------------------------------------------
 export async function deleteGameKeys(gameId: string): Promise<void> {
@@ -123,6 +140,7 @@ export async function deleteGameKeys(gameId: string): Promise<void> {
     `game:${gameId}:state`,
     `game:${gameId}:cursors`,
     `game:${gameId}:participants`,
-    `game:${gameId}:members`
+    `game:${gameId}:members`,
+    `game:${gameId}:spectators`
   );
 }

@@ -41,6 +41,15 @@ Permanent record of every user who has ever joined this game via WS.
 - **Used for:** Distinguishing a first-time join from a rejoin (to emit `rejoining: true` in `participant_joined`)
 - **Cleared:** When game transitions to `complete` (same as other game keys)
 
+### `game:{gameId}:spectators` — Set
+
+Tracks the set of socket IDs currently watching the game as spectators.
+
+- **Members:** `{socketId}` strings (not user IDs — a user can spectate from multiple tabs)
+- **Updated by:** WS `spectate_room` handler (SADD) and socket `disconnect` (SREM)
+- **Used for:** Computing the `spectator_count` broadcast payload
+- **Cleared:** When game transitions to `complete`, `abandoned`, or `expired` (same as other game keys)
+
 ### `channel:game:{gameId}` — Pub/Sub Channel
 
 Used for broadcasting real-time game events across multiple server instances.

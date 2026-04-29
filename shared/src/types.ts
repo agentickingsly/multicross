@@ -101,6 +101,10 @@ export interface LeaveRoomPayload {
   userId: string;
 }
 
+export interface SpectateRoomPayload {
+  gameId: string;
+}
+
 // --- Server → Client ---
 
 export interface RoomJoinedPayload {
@@ -144,9 +148,15 @@ export interface GameAbandonedPayload {
   gameId: string;
 }
 
+export interface SpectatorCountPayload {
+  gameId: string;
+  count: number;
+}
+
 /** Union map of all WS event names to their payload types */
 export interface ClientToServerEvents {
   join_room: (payload: JoinRoomPayload) => void;
+  spectate_room: (payload: SpectateRoomPayload) => void;
   fill_cell: (payload: FillCellPayload) => void;
   move_cursor: (payload: MoveCursorPayload) => void;
   leave_room: (payload: LeaveRoomPayload) => void;
@@ -160,6 +170,7 @@ export interface ServerToClientEvents {
   participant_left: (payload: ParticipantLeftPayload) => void;
   game_complete: (payload: GameCompletePayload) => void;
   game_abandoned: (payload: GameAbandonedPayload) => void;
+  spectator_count: (payload: SpectatorCountPayload) => void;
 }
 
 // ============================================================
