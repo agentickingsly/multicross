@@ -281,6 +281,52 @@ export default function CrosswordGrid({
     return null;
   }
 
+  // When the last empty cell in a word is filled, advance to the first empty cell
+  // of the next incomplete clue. pendingKey is the cell just typed (not yet in
+  // cellValueMap because the optimistic update hasn't re-rendered yet).
+  function advanceToNextWord(
+    filledRow: number,
+    filledCol: number,
+    dir: Direction
+  ): { pos: CursorPos; dir: Direction } | null {
+    const pendingKey = `${filledRow},${filledCol}`;
+    const primaryClues = dir === "across" ? acrossClues : downClues;
+    const altClues = dir === "across" ? downClues : acrossClues;
+    const altDir: Direction = dir === "across" ? "down" : "across";
+
+    // Locate the word that contains the just-filled cell
+    const currentIdx = primaryClues.findIndex((word) =>
+      word.cells.some(([r, c]) => r === filledRow && c === filledCol)
+    );
+    if (currentIdx === -1) return null;
+
+    // Check if filling this cell completes the whole word
+    const currentWord = primaryClues[currentIdx];
+    const isWordComplete = currentWord.cells.every(([r, c]) => {
+      const k = `${r},${c}`;
+      return k === pendingKey || cellValueMap.has(k);
+    });
+    if (!isWordComplete) return null;
+
+    // Find next incomplete word in primary direction (after current, then wrap)
+    const searchPrimary = [
+      ...primaryClues.slice(currentIdx + 1),
+      ...primaryClues.slice(0, currentIdx),
+    ];
+    for (const word of searchPrimary) {
+      const firstEmpty = word.cells.find(([r, c]) => !cellValueMap.has(`${r},${c}`));
+      if (firstEmpty) return { pos: { row: firstEmpty[0], col: firstEmpty[1] }, dir };
+    }
+
+    // All primary clues done — try alternate direction
+    for (const word of altClues) {
+      const firstEmpty = word.cells.find(([r, c]) => !cellValueMap.has(`${r},${c}`));
+      if (firstEmpty) return { pos: { row: firstEmpty[0], col: firstEmpty[1] }, dir: altDir };
+    }
+
+    return null; // puzzle complete — game_complete event will fire
+  }
+
   // ── Clue selection ──────────────────────────────────────────────────────────
 
   function selectClue(clueCells: [number, number][], dir: Direction) {
@@ -379,12 +425,19 @@ export default function CrosswordGrid({
       if (isCellLocked(row, col)) return;
       const letter = e.key.toUpperCase();
       onCellFill?.(row, col, letter);
-      const next = skipFilled
-        ? nextEmptyInWord(row, col, direction)
-        : nextWhiteCell(row, col, direction);
-      if (next) {
-        setSelected(next);
-        onCursorMove?.(next.row, next.col);
+      const wordAdvance = advanceToNextWord(row, col, direction);
+      if (wordAdvance) {
+        setDirection(wordAdvance.dir);
+        setSelected(wordAdvance.pos);
+        onCursorMove?.(wordAdvance.pos.row, wordAdvance.pos.col);
+      } else {
+        const next = skipFilled
+          ? nextEmptyInWord(row, col, direction)
+          : nextWhiteCell(row, col, direction);
+        if (next) {
+          setSelected(next);
+          onCursorMove?.(next.row, next.col);
+        }
       }
     }
   }
@@ -426,12 +479,19 @@ export default function CrosswordGrid({
     const { row, col } = selected;
     if (isCellLocked(row, col)) return;
     onCellFill?.(row, col, char.toUpperCase());
-    const next = skipFilled
-      ? nextEmptyInWord(row, col, direction)
-      : nextWhiteCell(row, col, direction);
-    if (next) {
-      setSelected(next);
-      onCursorMove?.(next.row, next.col);
+    const wordAdvance = advanceToNextWord(row, col, direction);
+    if (wordAdvance) {
+      setDirection(wordAdvance.dir);
+      setSelected(wordAdvance.pos);
+      onCursorMove?.(wordAdvance.pos.row, wordAdvance.pos.col);
+    } else {
+      const next = skipFilled
+        ? nextEmptyInWord(row, col, direction)
+        : nextWhiteCell(row, col, direction);
+      if (next) {
+        setSelected(next);
+        onCursorMove?.(next.row, next.col);
+      }
     }
   }
 
