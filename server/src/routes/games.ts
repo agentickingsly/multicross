@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomBytes } from "crypto";
 import pool from "../db/pool";
 import { pub, getSpectatorCount } from "../db/redis";
+import { emitToUser } from "../ws/ioInstance";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../logger";
 
@@ -414,6 +415,116 @@ router.post("/:id/report", requireAuth, async (req, res, next) => {
 
     logger.info({ gameId, reporterId, reportedUserId }, "Player reported");
     res.status(201).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/games/:id/invite — invite a friend to a game
+router.post("/:id/invite", requireAuth, async (req, res, next) => {
+  try {
+    const idParsed = z.string().uuid().safeParse(req.params.id);
+    if (!idParsed.success) {
+      res.status(400).json({ error: "Invalid game ID" });
+      return;
+    }
+    const gameId = idParsed.data;
+    const inviterId = req.user!.userId;
+
+    const bodyParsed = z.object({ inviteeId: z.string().uuid() }).safeParse(req.body);
+    if (!bodyParsed.success) {
+      res.status(400).json({ error: bodyParsed.error.issues[0].message });
+      return;
+    }
+    const { inviteeId } = bodyParsed.data;
+
+    if (inviterId === inviteeId) {
+      res.status(400).json({ error: "You cannot invite yourself" });
+      return;
+    }
+
+    // Verify game exists, is active, and inviter is a participant
+    const [gameResult, participantCheck, friendshipCheck] = await Promise.all([
+      pool.query(
+        "SELECT id, puzzle_id, status FROM games WHERE id = $1",
+        [gameId]
+      ),
+      pool.query(
+        "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+        [gameId, inviterId]
+      ),
+      pool.query(
+        `SELECT 1 FROM friendships
+         WHERE ((requester_id = $1 AND addressee_id = $2) OR (requester_id = $2 AND addressee_id = $1))
+           AND status = 'accepted'`,
+        [inviterId, inviteeId]
+      ),
+    ]);
+
+    if (!gameResult.rows[0]) {
+      res.status(404).json({ error: "Game not found" });
+      return;
+    }
+    const game = gameResult.rows[0];
+    if (game.status !== "waiting" && game.status !== "active") {
+      res.status(400).json({ error: "Game is no longer active" });
+      return;
+    }
+    if (!participantCheck.rows[0]) {
+      res.status(403).json({ error: "You are not a participant in this game" });
+      return;
+    }
+    if (!friendshipCheck.rows[0]) {
+      res.status(400).json({ error: "You can only invite friends" });
+      return;
+    }
+
+    // Check invitee is not already in the game
+    const alreadyParticipant = await pool.query(
+      "SELECT 1 FROM game_participants WHERE game_id = $1 AND user_id = $2",
+      [gameId, inviteeId]
+    );
+    if (alreadyParticipant.rows[0]) {
+      res.status(409).json({ error: "User is already in this game" });
+      return;
+    }
+
+    // Check for existing pending invite
+    const existingInvite = await pool.query(
+      "SELECT id FROM game_invites WHERE game_id = $1 AND invitee_id = $2 AND status = 'pending'",
+      [gameId, inviteeId]
+    );
+    if (existingInvite.rows[0]) {
+      res.status(409).json({ error: "A pending invite already exists for this user" });
+      return;
+    }
+
+    const inviteResult = await pool.query(
+      `INSERT INTO game_invites (game_id, inviter_id, invitee_id) VALUES ($1, $2, $3) RETURNING id`,
+      [gameId, inviterId, inviteeId]
+    );
+    const inviteId = inviteResult.rows[0].id as string;
+
+    // Fetch puzzle title and inviter display name for WS payload
+    const [puzzleResult, inviterResult] = await Promise.all([
+      pool.query("SELECT title FROM puzzles WHERE id = $1", [game.puzzle_id]),
+      pool.query("SELECT display_name FROM users WHERE id = $1", [inviterId]),
+    ]);
+    const puzzleTitle: string = puzzleResult.rows[0]?.title ?? "Unknown puzzle";
+    const inviterDisplayName: string = inviterResult.rows[0]?.display_name ?? "Someone";
+
+    const wsPayload = { inviteId, inviterId, inviterDisplayName, gameId, puzzleTitle };
+
+    await emitToUser(inviteeId, "game_invite", wsPayload);
+    await pub
+      .publish(
+        `channel:user:${inviteeId}`,
+        JSON.stringify({ event: "game_invite", payload: wsPayload, sourceUserId: inviterId })
+      )
+      .catch((err) => logger.error({ err }, "Failed to publish game_invite"));
+
+    logger.info({ inviteId, inviterId, inviteeId, gameId }, "Game invite sent");
+    res.status(201).json({ inviteId });
   } catch (err) {
     next(err);
   }

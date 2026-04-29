@@ -58,6 +58,24 @@ Used for broadcasting real-time game events across multiple server instances.
 - **Subscribers:** All server instances that have a socket in that game room
 - **Message format:** JSON `{ "event": "<eventName>", "payload": { ... } }`
 
+### `user:{userId}:connections` — String (integer counter)
+
+Tracks how many active WebSocket connections a user currently has, for online presence in the friends list.
+
+- **Value:** Integer (number of open sockets for this user)
+- **Set by:** WS `connection` event via `incrementUserConnections`; decremented in `disconnecting` via `decrementUserConnections`; key deleted when counter reaches 0
+- **Used for:** `GET /api/friends` to determine `online: boolean` for each friend
+- **TTL:** None — key is deleted automatically when the counter reaches 0
+
+### `channel:user:{userId}` — Pub/Sub Channel
+
+Used for delivering per-user notifications (friend requests, game invites) across server instances.
+
+- **Publishers:** `/api/friends/request` and `/api/games/:id/invite` route handlers
+- **Subscribers:** All server instances (subscribed on first connect per user)
+- **Message format:** JSON `{ "event": "<eventName>", "payload": { ... } }`
+- **Relayed events:** `friend_request`, `game_invite`
+
 ---
 
 ## Key Lifetime

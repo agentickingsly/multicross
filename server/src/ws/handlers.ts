@@ -19,7 +19,10 @@ import {
   addSpectator,
   removeSpectator,
   getSpectatorCount,
+  incrementUserConnections,
+  decrementUserConnections,
 } from "../db/redis";
+import { setIo } from "./ioInstance";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for WS payload validation
@@ -41,10 +44,10 @@ const moveCursorSchema = z.object({
 const leaveRoomSchema = z.object({ gameId: z.string().uuid() });
 
 // ---------------------------------------------------------------------------
-// Whitelisted pub/sub event names
+// Whitelisted pub/sub event names (split by channel type)
 // ---------------------------------------------------------------------------
 
-const ALLOWED_EVENTS = new Set([
+const ALLOWED_GAME_EVENTS = new Set([
   "cell_updated",
   "cursor_moved",
   "participant_joined",
@@ -52,6 +55,11 @@ const ALLOWED_EVENTS = new Set([
   "game_complete",
   "game_abandoned",
   "spectator_count",
+]);
+
+const ALLOWED_USER_EVENTS = new Set([
+  "friend_request",
+  "game_invite",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -80,8 +88,9 @@ type CrosswordSocket = Socket<ClientToServerEvents, ServerToClientEvents> & {
 // Pub/sub state
 // ---------------------------------------------------------------------------
 
-// Track which game channels this instance has subscribed to (avoid duplicate SUBSCRIBE calls)
+// Track which channels this instance has subscribed to (avoid duplicate SUBSCRIBE calls)
 const subscribedChannels = new Set<string>();
+const subscribedUserChannels = new Set<string>();
 
 // ---------------------------------------------------------------------------
 // Row/col mapper helpers
@@ -136,11 +145,22 @@ function subscribeToGameChannel(io: CrosswordServer, gameId: string) {
   });
 }
 
+function subscribeToUserChannel(userId: string) {
+  const channel = `channel:user:${userId}`;
+  if (subscribedUserChannels.has(channel)) return;
+  subscribedUserChannels.add(channel);
+  sub.subscribe(channel, (err) => {
+    if (err) logger.error({ err }, `[ws] Failed to subscribe to ${channel}`);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Register handlers
 // ---------------------------------------------------------------------------
 
 export function registerWsHandlers(io: CrosswordServer): void {
+  setIo(io);
+
   // --- JWT auth middleware ---
   (io as any).use((socket: CrosswordSocket, next: (err?: Error) => void) => {
     const token: string | undefined = socket.handshake.auth?.token;
@@ -161,7 +181,6 @@ export function registerWsHandlers(io: CrosswordServer): void {
   });
 
   // --- Pub/sub message relay ---
-  // When another server instance publishes a game event, broadcast it to our local sockets.
   sub.on("message", (channel: string, message: string) => {
     try {
       const { event, payload, sourceSocketId } = JSON.parse(message) as {
@@ -169,12 +188,17 @@ export function registerWsHandlers(io: CrosswordServer): void {
         payload: unknown;
         sourceSocketId: string;
       };
-      if (!ALLOWED_EVENTS.has(event)) return;
-      // Skip if the source socket is on this instance (already broadcast locally)
-      if ((io.sockets.sockets as Map<string, any>).has(sourceSocketId)) return;
 
-      const gameId = channel.replace("channel:game:", "");
-      (io.to(gameId) as any).emit(event, payload);
+      if (channel.startsWith("channel:game:")) {
+        if (!ALLOWED_GAME_EVENTS.has(event)) return;
+        if ((io.sockets.sockets as Map<string, any>).has(sourceSocketId)) return;
+        const gameId = channel.replace("channel:game:", "");
+        (io.to(gameId) as any).emit(event, payload);
+      } else if (channel.startsWith("channel:user:")) {
+        if (!ALLOWED_USER_EVENTS.has(event)) return;
+        const userId = channel.replace("channel:user:", "");
+        (io.to(`user:${userId}`) as any).emit(event, payload);
+      }
     } catch (err) {
       logger.error({ err }, "[ws] pub/sub relay error");
     }
@@ -183,7 +207,17 @@ export function registerWsHandlers(io: CrosswordServer): void {
   // --- Connection ---
   io.on("connection", (socket) => {
     const s = socket as CrosswordSocket;
-    logger.info(`[ws] Socket connected: ${s.id} user=${s.data.user.userId}`);
+    const connUserId = s.data.user.userId;
+    logger.info(`[ws] Socket connected: ${s.id} user=${connUserId}`);
+
+    // Join personal room for direct user notifications
+    s.join(`user:${connUserId}`);
+    // Track connection count in Redis for online presence
+    incrementUserConnections(connUserId).catch((err) =>
+      logger.error({ err }, "[ws] Failed to increment user connections")
+    );
+    // Subscribe to personal pub/sub channel (idempotent)
+    subscribeToUserChannel(connUserId);
 
     // -----------------------------------------------------------------------
     // join_room
@@ -522,6 +556,11 @@ export function registerWsHandlers(io: CrosswordServer): void {
       logger.info(`[ws] Socket disconnecting: ${s.id}`);
       const userId = s.data?.user?.userId;
       if (!userId) return;
+
+      // Decrement connection counter; key deleted when it reaches 0
+      decrementUserConnections(userId).catch((err) =>
+        logger.error({ err }, "[ws] Failed to decrement user connections")
+      );
 
       // Spectator cleanup — iterate our own Set, not s.rooms, for reliability.
       for (const gameId of (s.data.spectatingGames ?? [])) {

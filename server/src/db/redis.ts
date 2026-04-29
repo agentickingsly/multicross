@@ -133,6 +133,36 @@ export async function getSpectatorCount(gameId: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// user:{userId}:connections helpers
+// Tracks how many active sockets a user has, for online presence in friends list.
+// Incremented on WS connect, decremented on disconnect; key deleted when it reaches 0.
+// ---------------------------------------------------------------------------
+
+export async function incrementUserConnections(userId: string): Promise<void> {
+  await redis.incr(`user:${userId}:connections`);
+}
+
+export async function decrementUserConnections(userId: string): Promise<void> {
+  const count = await redis.decr(`user:${userId}:connections`);
+  if (count <= 0) {
+    await redis.del(`user:${userId}:connections`);
+  }
+}
+
+export async function getOnlineStatuses(
+  userIds: string[]
+): Promise<Record<string, boolean>> {
+  if (userIds.length === 0) return {};
+  const keys = userIds.map((id) => `user:${id}:connections`);
+  const values = await redis.mget(...keys);
+  const result: Record<string, boolean> = {};
+  userIds.forEach((id, i) => {
+    result[id] = values[i] !== null && parseInt(values[i]!, 10) > 0;
+  });
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup: delete all keys for a game
 // ---------------------------------------------------------------------------
 export async function deleteGameKeys(gameId: string): Promise<void> {

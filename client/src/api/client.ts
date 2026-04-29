@@ -209,6 +209,108 @@ export function reportPlayer(
   });
 }
 
+// ─── Friends ──────────────────────────────────────────────────────────────────
+
+export interface Friend {
+  friendshipId: string;
+  userId: string;
+  displayName: string;
+  online: boolean;
+}
+
+export interface FriendRequest {
+  friendshipId: string;
+  requesterId: string;
+  displayName: string;
+  createdAt: string;
+}
+
+export interface GameInviteItem {
+  id: string;
+  gameId: string;
+  inviterId: string;
+  inviterDisplayName: string;
+  puzzleTitle: string;
+  gameStatus: string;
+  createdAt: string;
+}
+
+export interface UserSearchResult {
+  id: string;
+  displayName: string;
+}
+
+export function getFriends(): Promise<{ friends: Friend[] }> {
+  return apiFetch<{ friends: Friend[] }>("/friends");
+}
+
+export function getFriendRequests(): Promise<{ requests: FriendRequest[] }> {
+  return apiFetch<{ requests: FriendRequest[] }>("/friends/requests");
+}
+
+export function searchUsers(q: string): Promise<{ users: UserSearchResult[] }> {
+  return apiFetch<{ users: UserSearchResult[] }>(
+    `/friends/search?q=${encodeURIComponent(q)}`
+  );
+}
+
+export function sendFriendRequest(addresseeId: string): Promise<{ friendshipId: string }> {
+  return apiFetch<{ friendshipId: string }>("/friends/request", {
+    method: "POST",
+    body: JSON.stringify({ addresseeId }),
+  });
+}
+
+export function acceptFriendRequest(friendshipId: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/friends/${friendshipId}/accept`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function declineFriendRequest(friendshipId: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/friends/${friendshipId}/decline`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export function removeFriend(friendshipId: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/friends/${friendshipId}`, {
+    method: "DELETE",
+  });
+}
+
+export function inviteToGame(
+  gameId: string,
+  inviteeId: string
+): Promise<{ inviteId: string }> {
+  return apiFetch<{ inviteId: string }>(`/games/${gameId}/invite`, {
+    method: "POST",
+    body: JSON.stringify({ inviteeId }),
+  });
+}
+
+export function getInvites(): Promise<{ invites: GameInviteItem[] }> {
+  return apiFetch<{ invites: GameInviteItem[] }>("/invites");
+}
+
+export function acceptInvite(
+  inviteId: string
+): Promise<{ success: boolean; gameId: string }> {
+  return apiFetch<{ success: boolean; gameId: string }>(
+    `/invites/${inviteId}/accept`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
+export function declineInvite(inviteId: string): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/invites/${inviteId}/decline`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 // ─── Puzzle ratings ───────────────────────────────────────────────────────────
 
 export function getPuzzleStats(puzzleId: string): Promise<GetPuzzleStatsResponse> {

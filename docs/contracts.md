@@ -31,6 +31,8 @@ All events are typed in `/shared/src/types.ts`.
 | `game_complete` | `{ completedAt: string, stats: { userId: string, cellsFilled: number }[] }` |
 | `game_abandoned` | `{ gameId: string }` |
 | `spectator_count` | `{ gameId: string, count: number }` — broadcast to all room members when spectator count changes |
+| `friend_request` | `{ friendshipId: string, requesterId: string, requesterDisplayName: string }` — sent to the addressee's personal room when a friend request is received |
+| `game_invite` | `{ inviteId: string, inviterId: string, inviterDisplayName: string, gameId: string, puzzleTitle: string }` — sent to the invitee's personal room when a game invite is received |
 
 ---
 
@@ -58,6 +60,17 @@ Base path: `/api`
 | GET | `/puzzles/:id/stats` | — | `{ stats: PuzzleStats, userRating: { difficulty, enjoyment } \| null }` |
 | POST | `/puzzles/:id/rate` | `{ difficulty: 1-5, enjoyment: 1-5 }` | `{ stats: PuzzleStats }` |
 | POST | `/games/:id/report` | `{ reportedUserId: uuid, reason: string (max 500) }` | `{ success: true }` — 400 if self-report or invalid fields; 404 if game/user not found |
+| POST | `/friends/request` | `{ addresseeId: uuid }` | `{ friendshipId: uuid }` — 400 if self-request; 404 if user not found; 409 if already exists |
+| GET | `/friends/requests` | — | `{ requests: FriendRequest[] }` — pending incoming requests |
+| GET | `/friends` | — | `{ friends: Friend[] }` — accepted friends with online status |
+| POST | `/friends/:id/accept` | — | `{ success: true }` — addressee only; 404 if not found or already processed |
+| POST | `/friends/:id/decline` | — | `{ success: true }` — addressee only |
+| DELETE | `/friends/:id` | — | `{ success: true }` — either party; 404 if not found |
+| GET | `/friends/search` | query: `q` (min 2 chars) | `{ users: UserSearchResult[] }` — users matching display name |
+| POST | `/games/:id/invite` | `{ inviteeId: uuid }` | `{ inviteId: uuid }` — 400 if not friends or game inactive; 403 if not participant; 409 if pending invite exists |
+| GET | `/invites` | — | `{ invites: GameInviteItem[] }` — pending game invites for current user |
+| POST | `/invites/:id/accept` | — | `{ success: true, gameId: uuid }` — joins game as participant; 400 if game no longer active; 404 if not found |
+| POST | `/invites/:id/decline` | — | `{ success: true }` — 404 if not found |
 | POST | `/admin/users/:id/ban` | `{ reason?: string }` | `{ success: true }` — admin only; 403 for non-admin |
 | POST | `/admin/users/:id/unban` | — | `{ success: true }` — admin only |
 | GET | `/admin/users` | query: `page` (default 1), `limit` (default 20, max 100) | `{ users: AdminUser[], total, page, limit, totalPages }` — admin only |
@@ -67,6 +80,14 @@ Base path: `/api`
 `AdminReport`: `{ id, gameId, reason, createdAt, reporter: { id, email, displayName }, reportedUser: { id, email, displayName } }`
 
 `ActiveGame`: `{ id, roomCode, status: "waiting"|"active", createdAt, puzzleTitle, participantCount: number }`
+
+`Friend`: `{ friendshipId: uuid, userId: uuid, displayName: string, online: boolean }`
+
+`FriendRequest`: `{ friendshipId: uuid, requesterId: uuid, displayName: string, createdAt: string }`
+
+`UserSearchResult`: `{ id: uuid, displayName: string }`
+
+`GameInviteItem`: `{ id: uuid, gameId: uuid, inviterId: uuid, inviterDisplayName: string, puzzleTitle: string, gameStatus: string, createdAt: string }`
 
 `GameMove`: `{ id, gameId, userId, row, col, value: string (empty string = deletion), createdAt }`
 

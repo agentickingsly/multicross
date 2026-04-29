@@ -70,6 +70,25 @@ export interface GameCell {
   filledAt: string | null;
 }
 
+export interface Friendship {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GameInvite {
+  id: string;
+  gameId: string;
+  inviterId: string;
+  inviteeId: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ============================================================
 // WebSocket event payloads
 // ============================================================
@@ -153,6 +172,20 @@ export interface SpectatorCountPayload {
   count: number;
 }
 
+export interface FriendRequestPayload {
+  friendshipId: string;
+  requesterId: string;
+  requesterDisplayName: string;
+}
+
+export interface GameInvitePayload {
+  inviteId: string;
+  inviterId: string;
+  inviterDisplayName: string;
+  gameId: string;
+  puzzleTitle: string;
+}
+
 /** Union map of all WS event names to their payload types */
 export interface ClientToServerEvents {
   join_room: (payload: JoinRoomPayload) => void;
@@ -171,6 +204,8 @@ export interface ServerToClientEvents {
   game_complete: (payload: GameCompletePayload) => void;
   game_abandoned: (payload: GameAbandonedPayload) => void;
   spectator_count: (payload: SpectatorCountPayload) => void;
+  friend_request: (payload: FriendRequestPayload) => void;
+  game_invite: (payload: GameInvitePayload) => void;
 }
 
 // ============================================================
