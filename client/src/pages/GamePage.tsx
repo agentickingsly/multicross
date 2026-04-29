@@ -19,6 +19,7 @@ import type {
 } from "@multicross/shared";
 import type { PuzzleStats } from "@multicross/shared";
 import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer, joinGameById, getSpectatorCount } from "../api/client";
+import { getTogglePrefs, setTogglePrefs } from "../utils/togglePrefs";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
 import ReplayControls from "../components/ReplayControls";
@@ -111,10 +112,10 @@ export default function GamePage() {
   // ── Header UI state ──────────────────────────────────────────────────────────
   const [copied, setCopied] = useState(false);
   const [showContributions, setShowContributions] = useState(false);
-  const [showColors, setShowColors] = useState(true);
-  const [lockCorrect, setLockCorrect] = useState(false);
-  const [lockWord, setLockWord] = useState(false);
-  const [skipFilled, setSkipFilled] = useState(false);
+  const [showColors, setShowColors] = useState(() => getTogglePrefs().showColors);
+  const [lockCorrect, setLockCorrect] = useState(() => getTogglePrefs().lockCorrect);
+  const [lockWord, setLockWord] = useState(() => getTogglePrefs().lockWord);
+  const [skipFilled, setSkipFilled] = useState(() => getTogglePrefs().skipFilled);
   const [abandonLoading, setAbandonLoading] = useState(false);
 
   // ── Spectator state ──────────────────────────────────────────────────────────
@@ -927,16 +928,16 @@ export default function GamePage() {
               <button style={s.copyBtn} onClick={handleCopyRoomCode}>
                 {copied ? "Copied!" : "Copy"}
               </button>
-              <button style={s.colorToggleBtn} onClick={() => setShowColors(prev => !prev)} title="Highlight correct letters in green">
+              <button style={s.colorToggleBtn} onClick={() => setShowColors(prev => { const next = !prev; setTogglePrefs({ showColors: next, lockCorrect, lockWord, skipFilled }); return next; })} title="Highlight correct letters in green">
                 {showColors ? "Check" : "Check off"}
               </button>
-              <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => !prev)} title="Prevent correct letters from being overwritten">
+              <button style={s.lockToggleBtn} onClick={() => setLockCorrect(prev => { const next = !prev; setTogglePrefs({ showColors, lockCorrect: next, lockWord, skipFilled }); return next; })} title="Prevent correct letters from being overwritten">
                 {lockCorrect ? "Protect" : "Protect off"}
               </button>
-              <button style={s.lockWordToggleBtn} onClick={() => setLockWord(prev => !prev)} title="Lock entire word when all letters are correct">
+              <button style={s.lockWordToggleBtn} onClick={() => setLockWord(prev => { const next = !prev; setTogglePrefs({ showColors, lockCorrect, lockWord: next, skipFilled }); return next; })} title="Lock entire word when all letters are correct">
                 {lockWord ? "Lock Word" : "Lock Word off"}
               </button>
-              <button style={s.skipFilledToggleBtn} onClick={() => setSkipFilled(prev => !prev)} title="Automatically skip over filled cells when typing">
+              <button style={s.skipFilledToggleBtn} onClick={() => setSkipFilled(prev => { const next = !prev; setTogglePrefs({ showColors, lockCorrect, lockWord, skipFilled: next }); return next; })} title="Automatically skip over filled cells when typing">
                 {skipFilled ? "Skip Filled" : "Skip Filled off"}
               </button>
               <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
