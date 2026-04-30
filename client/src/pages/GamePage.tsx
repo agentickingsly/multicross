@@ -18,7 +18,8 @@ import type {
   SpectatorCountPayload,
 } from "@multicross/shared";
 import type { PuzzleStats } from "@multicross/shared";
-import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer, joinGameById, getSpectatorCount } from "../api/client";
+import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer, joinGameById, getSpectatorCount, getFriends, inviteToGame } from "../api/client";
+import type { Friend } from "../api/client";
 import { getTogglePrefs, setTogglePrefs } from "../utils/togglePrefs";
 import { ws } from "../ws/socket";
 import CrosswordGrid from "../components/CrosswordGrid";
@@ -121,6 +122,13 @@ export default function GamePage() {
   // ── Spectator state ──────────────────────────────────────────────────────────
   const [spectatorCount, setSpectatorCount] = useState(0);
   const [joiningFromSpectate, setJoiningFromSpectate] = useState(false);
+
+  // ── Invite state ─────────────────────────────────────────────────────────────
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteFriends, setInviteFriends] = useState<Friend[]>([]);
+  const [inviteFriendsLoading, setInviteFriendsLoading] = useState(false);
+  const [invitedIds, setInvitedIds] = useState<Set<string>>(new Set());
+  const [inviteError, setInviteError] = useState("");
 
   // ── Report state ─────────────────────────────────────────────────────────────
   const [reportTarget, setReportTarget] = useState<ParticipantWithName | null>(null);
@@ -419,6 +427,33 @@ export default function GamePage() {
     }
   }
 
+  async function handleOpenInvite() {
+    setShowInviteModal(true);
+    if (inviteFriends.length > 0) return;
+    setInviteFriendsLoading(true);
+    setInviteError("");
+    try {
+      const { friends } = await getFriends();
+      setInviteFriends(friends);
+    } catch {
+      setInviteError("Failed to load friends");
+    } finally {
+      setInviteFriendsLoading(false);
+    }
+  }
+
+  async function handleInviteFriend(friend: Friend) {
+    if (!gameId) return;
+    try {
+      await inviteToGame(gameId, friend.userId);
+      setInvitedIds((prev) => new Set(prev).add(friend.userId));
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("pending invite")) {
+        setInvitedIds((prev) => new Set(prev).add(friend.userId));
+      }
+    }
+  }
+
   function handleViewPuzzle() {
     setViewMode(true);
     setIsLiveGame(false); // disconnects WS via effect cleanup
@@ -653,6 +688,16 @@ export default function GamePage() {
       background: "rgba(220,38,38,0.15)",
       color: "#fca5a5",
       border: "1px solid rgba(220,38,38,0.4)",
+      borderRadius: "6px",
+      padding: "0.3rem 0.6rem",
+      cursor: "pointer",
+      fontSize: "0.75rem",
+      transition: "background 0.2s",
+    },
+    inviteBtn: {
+      background: "rgba(34,197,94,0.2)",
+      color: "#86efac",
+      border: "1px solid rgba(34,197,94,0.4)",
       borderRadius: "6px",
       padding: "0.3rem 0.6rem",
       cursor: "pointer",
@@ -943,6 +988,11 @@ export default function GamePage() {
               <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
                 {showContributions ? "Hide contributions" : "Show contributions"}
               </button>
+              {currentUser?.id === game.createdBy && game.status === "waiting" && !isSpectating && (
+                <button style={s.inviteBtn} onClick={handleOpenInvite}>
+                  Invite friends
+                </button>
+              )}
               {currentUser?.id === game.createdBy && !gameEnded && game.status !== "complete" && (
                 <button
                   style={s.abandonBtn}
@@ -1145,6 +1195,83 @@ export default function GamePage() {
             <button style={s.modalBtn} onClick={() => navigate("/lobby")}>
               Back to lobby
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Invite friends modal */}
+      {showInviteModal && (
+        <div style={s.modal} onClick={() => setShowInviteModal(false)}>
+          <div style={{ ...s.modalBox, textAlign: "left", gap: "0.75rem", maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: "1.1rem", fontWeight: "700", color: "#1e3a5f", margin: 0 }}>
+              Invite friends
+            </div>
+            {inviteError && (
+              <div style={{ color: "#dc2626", fontSize: "0.875rem" }}>{inviteError}</div>
+            )}
+            {inviteFriendsLoading ? (
+              <div style={{ color: "#64748b", fontSize: "0.875rem" }}>Loading friends…</div>
+            ) : inviteFriends.length === 0 ? (
+              <div style={{ color: "#64748b", fontSize: "0.875rem" }}>No friends to invite.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {inviteFriends.map((friend) => {
+                  const alreadyIn = participants.some((p) => p.userId === friend.userId);
+                  const invited = invitedIds.has(friend.userId);
+                  return (
+                    <div
+                      key={friend.userId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.4rem 0",
+                        opacity: alreadyIn ? 0.45 : 1,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          background: friend.online ? "#22c55e" : "#94a3b8",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ flex: 1, fontSize: "0.9rem", color: "#374151" }}>
+                        {friend.displayName}
+                      </span>
+                      {alreadyIn ? (
+                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>In game</span>
+                      ) : invited ? (
+                        <span style={{ fontSize: "0.75rem", color: "#059669", fontWeight: "600" }}>Invited!</span>
+                      ) : (
+                        <button
+                          style={{
+                            background: "#2563eb",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "0.25rem 0.75rem",
+                            cursor: "pointer",
+                            fontSize: "0.8rem",
+                            fontWeight: "600",
+                          }}
+                          onClick={() => handleInviteFriend(friend)}
+                        >
+                          Invite
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button style={s.modalBtnOutline} onClick={() => setShowInviteModal(false)}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

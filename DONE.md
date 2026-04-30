@@ -36,3 +36,20 @@ None.
 
 ## Test results
 171 tests pass (10 test files), including 34 new tests in friends.test.ts.
+
+---
+
+# Session: In-game invite modal + duplicate invite fix
+
+## Files modified
+
+### Client
+- `client/src/pages/GamePage.tsx` — added "Invite friends" button (creator-only, waiting status only, non-spectator) in header; invite modal with friends list, online status dots, greyed-out in-game players, "Invited!" state for sent/pending invites; imports `getFriends`, `inviteToGame`, `Friend` from api/client
+
+### Server (duplicate invite bug fix, prior session)
+- `server/src/routes/friends.ts` — removed `emitToUser` direct emit; pub/sub is sole delivery path
+- `server/src/routes/games.ts` — removed `emitToUser` import and call from invite handler
+- `server/src/ws/ioInstance.ts` — removed `emitToUser` export (now only exports `setIo`)
+
+## Dependencies added
+None.
