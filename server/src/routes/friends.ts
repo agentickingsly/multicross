@@ -32,6 +32,7 @@ router.get("/requests", async (req, res, next) => {
 });
 
 // GET /api/friends/search?q= — must be registered before /:id routes
+// Excludes users where is_searchable = false unless already friends with the searcher
 router.get("/search", async (req, res, next) => {
   try {
     const q = String(req.query.q ?? "").trim();
@@ -41,9 +42,20 @@ router.get("/search", async (req, res, next) => {
     }
     const userId = req.user!.userId;
     const result = await pool.query(
-      `SELECT id, display_name FROM users
-       WHERE display_name ILIKE $1 AND id != $2 AND is_banned = false
-       ORDER BY display_name ASC
+      `SELECT u.id, u.display_name FROM users u
+       WHERE u.display_name ILIKE $1
+         AND u.id != $2
+         AND u.is_banned = false
+         AND (
+           u.is_searchable = true
+           OR EXISTS (
+             SELECT 1 FROM friendships f
+             WHERE f.status = 'accepted'
+               AND ((f.requester_id = $2 AND f.addressee_id = u.id)
+                 OR (f.addressee_id = $2 AND f.requester_id = u.id))
+           )
+         )
+       ORDER BY u.display_name ASC
        LIMIT 10`,
       [`%${q}%`, userId]
     );
@@ -89,6 +101,73 @@ router.get("/", async (req, res, next) => {
         online: onlineStatuses[r.friend_id as string] ?? false,
       })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/friends/request-by-code — send a friend request via invite code (bypasses is_searchable)
+router.post("/request-by-code", async (req, res, next) => {
+  try {
+    const parsed = z
+      .object({ inviteCode: z.string().min(1).max(20) })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0].message });
+      return;
+    }
+    const normalizedCode = parsed.data.inviteCode.trim().toUpperCase();
+    const requesterId = req.user!.userId;
+
+    const addresseeResult = await pool.query(
+      "SELECT id, display_name FROM users WHERE invite_code = $1 AND is_banned = false",
+      [normalizedCode]
+    );
+    if (!addresseeResult.rows[0]) {
+      res.status(404).json({ error: "No user found with that invite code" });
+      return;
+    }
+    const addresseeId: string = addresseeResult.rows[0].id;
+
+    if (requesterId === addresseeId) {
+      res.status(400).json({ error: "You cannot send a friend request to yourself" });
+      return;
+    }
+
+    const existing = await pool.query(
+      `SELECT id FROM friendships
+       WHERE (requester_id = $1 AND addressee_id = $2)
+          OR (requester_id = $2 AND addressee_id = $1)`,
+      [requesterId, addresseeId]
+    );
+    if (existing.rows[0]) {
+      res.status(409).json({ error: "A friendship or pending request already exists with this user" });
+      return;
+    }
+
+    const result = await pool.query(
+      `INSERT INTO friendships (requester_id, addressee_id) VALUES ($1, $2) RETURNING id`,
+      [requesterId, addresseeId]
+    );
+    const friendshipId = result.rows[0].id as string;
+
+    const requesterResult = await pool.query(
+      "SELECT display_name FROM users WHERE id = $1",
+      [requesterId]
+    );
+    const requesterDisplayName: string =
+      requesterResult.rows[0]?.display_name ?? "Someone";
+
+    const wsPayload = { friendshipId, requesterId, requesterDisplayName };
+    await pub
+      .publish(
+        `channel:user:${addresseeId}`,
+        JSON.stringify({ event: "friend_request", payload: wsPayload, sourceUserId: requesterId })
+      )
+      .catch((err) => logger.error({ err }, "Failed to publish friend_request"));
+
+    logger.info({ friendshipId, requesterId, addresseeId }, "Friend request sent via invite code");
+    res.status(201).json({ friendshipId });
   } catch (err) {
     next(err);
   }

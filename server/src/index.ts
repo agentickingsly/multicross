@@ -18,6 +18,7 @@ import gamesRouter from "./routes/games";
 import adminRouter from "./routes/admin";
 import friendsRouter from "./routes/friends";
 import invitesRouter from "./routes/invites";
+import usersRouter from "./routes/users";
 import { registerWsHandlers } from "./ws/handlers";
 import { startExpiryJob } from "./jobs/expiry";
 
@@ -66,6 +67,7 @@ app.use("/api/puzzles", requireAuth, requireNotBanned, puzzlesRouter);
 app.use("/api/games", requireAuth, requireNotBanned, gamesRouter);
 app.use("/api/friends", requireAuth, requireNotBanned, friendsRouter);
 app.use("/api/invites", requireAuth, requireNotBanned, invitesRouter);
+app.use("/api/users", requireAuth, requireNotBanned, usersRouter);
 app.use("/api/admin", requireAuth, requireNotBanned, requireAdmin, adminRouter);
 
 if (process.env.NODE_ENV === "production") {

@@ -19,6 +19,20 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+function generateFriendInviteCode(): string {
+  const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let code = "";
+  for (let i = 0; i < 4; i++) {
+    code += alpha[Math.floor(Math.random() * 26)];
+  }
+  code += "-";
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * 36)];
+  }
+  return code;
+}
+
 // POST /api/auth/register
 router.post("/register", async (req, res) => {
   const INVITE_CODE = process.env.INVITE_CODE;
@@ -44,18 +58,43 @@ router.post("/register", async (req, res) => {
 
   try {
     const passwordHash = await bcrypt.hash(password, 12);
-    const result = await pool.query(
-      `INSERT INTO users (email, display_name, password_hash)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, display_name, created_at`,
-      [email, displayName, passwordHash]
-    );
-    const row = result.rows[0];
+
+    let row: Record<string, unknown> | undefined;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const friendCode = generateFriendInviteCode();
+      try {
+        const result = await pool.query(
+          `INSERT INTO users (email, display_name, password_hash, invite_code)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, email, display_name, created_at, invite_code, is_searchable`,
+          [email, displayName, passwordHash, friendCode]
+        );
+        row = result.rows[0];
+        break;
+      } catch (err: unknown) {
+        const pgErr = err as { code?: string; constraint?: string };
+        if (pgErr.code === "23505") {
+          if (pgErr.constraint === "uq_users_invite_code") {
+            continue; // rare collision on friend invite code — retry
+          }
+          res.status(409).json({ error: "Email already exists" });
+          return;
+        }
+        throw err;
+      }
+    }
+
+    if (!row) {
+      throw new Error("Failed to generate unique friend invite code");
+    }
+
     const user = {
       id: row.id,
       email: row.email,
       displayName: row.display_name,
       createdAt: row.created_at,
+      inviteCode: row.invite_code,
+      isSearchable: row.is_searchable,
     };
     const token = jwt.sign(
       { userId: user.id, email: user.email },
@@ -63,11 +102,7 @@ router.post("/register", async (req, res) => {
       { expiresIn: "7d" }
     );
     res.status(201).json({ user, token });
-  } catch (err: any) {
-    if (err.code === "23505") {
-      res.status(409).json({ error: "Email already exists" });
-      return;
-    }
+  } catch (err) {
     throw err;
   }
 });
@@ -83,7 +118,8 @@ router.post("/login", async (req, res, next) => {
 
   try {
     const result = await pool.query(
-      `SELECT id, email, display_name, password_hash, created_at FROM users WHERE email = $1`,
+      `SELECT id, email, display_name, password_hash, created_at, invite_code, is_searchable
+       FROM users WHERE email = $1`,
       [email]
     );
     const row = result.rows[0];
@@ -103,6 +139,8 @@ router.post("/login", async (req, res, next) => {
       email: row.email,
       displayName: row.display_name,
       createdAt: row.created_at,
+      inviteCode: row.invite_code,
+      isSearchable: row.is_searchable,
     };
     const token = jwt.sign(
       { userId: user.id, email: user.email },

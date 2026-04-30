@@ -8,6 +8,8 @@ import type {
   GetGameHistoryResponse,
   GetPuzzleStatsResponse,
   RatePuzzleResponse,
+  GetMeResponse,
+  UpdatePrivacyResponse,
 } from "@multicross/shared";
 
 const BASE_URL = `${import.meta.env.VITE_API_URL}/api`;
@@ -308,6 +310,26 @@ export function declineInvite(inviteId: string): Promise<{ success: boolean }> {
   return apiFetch<{ success: boolean }>(`/invites/${inviteId}/decline`, {
     method: "POST",
     body: JSON.stringify({}),
+  });
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export function getMe(): Promise<GetMeResponse> {
+  return apiFetch<GetMeResponse>("/users/me");
+}
+
+export function updatePrivacy(isSearchable: boolean): Promise<UpdatePrivacyResponse> {
+  return apiFetch<UpdatePrivacyResponse>("/users/me/privacy", {
+    method: "PATCH",
+    body: JSON.stringify({ isSearchable }),
+  });
+}
+
+export function sendFriendRequestByCode(inviteCode: string): Promise<{ friendshipId: string }> {
+  return apiFetch<{ friendshipId: string }>("/friends/request-by-code", {
+    method: "POST",
+    body: JSON.stringify({ inviteCode }),
   });
 }
 

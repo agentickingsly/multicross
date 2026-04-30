@@ -1,3 +1,25 @@
+# Session: Profile Privacy & Friend Invite Codes
+
+## Files Created
+- `server/src/db/migrations/009_profile_privacy_and_invite_codes.sql` — adds `is_searchable` boolean and `invite_code varchar(12)` to users; backfills existing users; unique constraint + index
+- `server/src/routes/users.ts` — GET /api/users/me, PATCH /api/users/me/privacy
+
+## Files Modified
+- `server/src/routes/auth.ts` — generates friend invite code on register; returns `inviteCode` + `isSearchable` in both register and login responses
+- `server/src/routes/friends.ts` — updated GET /search to exclude non-searchable users (unless already friends); added POST /request-by-code before /:id routes
+- `server/src/index.ts` — imports and mounts usersRouter at /api/users
+- `server/src/__tests__/friends.test.ts` — added 3 new describe blocks: POST /request-by-code (7 tests), PATCH /api/users/me/privacy (5 tests), GET /friends/search privacy exclusion (2 tests)
+- `shared/src/types.ts` — added `inviteCode?` + `isSearchable?` to User; added GetMeResponse, UpdatePrivacyRequest, UpdatePrivacyResponse, FriendRequestByCodeRequest
+- `shared/dist/types.js` + `shared/dist/types.d.ts` — rebuilt after types change
+- `client/src/api/client.ts` — added getMe(), updatePrivacy(), sendFriendRequestByCode()
+- `client/src/pages/LobbyPage.tsx` — Friends panel: invite code display with Copy button; Discoverable/Hidden privacy toggle; "By name"/"By code" tabs; code input with success message
+- `docs/contracts.md` — documented 3 new endpoints; updated users table schema summary; updated GET /friends/search description
+
+## Test results
+185 tests passing (10 test files). No regressions.
+
+---
+
 # Session: Friends list and game invite system
 
 ## Files created

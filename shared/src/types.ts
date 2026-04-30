@@ -7,6 +7,8 @@ export interface User {
   email: string;
   displayName: string;
   createdAt: string;
+  inviteCode?: string;
+  isSearchable?: boolean;
 }
 
 export interface Puzzle {
@@ -231,6 +233,25 @@ export interface LoginRequest {
 export interface LoginResponse {
   user: User;
   token: string;
+}
+
+// GET /api/users/me
+export interface GetMeResponse {
+  user: User;
+}
+
+// PATCH /api/users/me/privacy
+export interface UpdatePrivacyRequest {
+  isSearchable: boolean;
+}
+export interface UpdatePrivacyResponse {
+  success: boolean;
+  isSearchable: boolean;
+}
+
+// POST /api/friends/request-by-code
+export interface FriendRequestByCodeRequest {
+  inviteCode: string;
 }
 
 // GET /api/puzzles

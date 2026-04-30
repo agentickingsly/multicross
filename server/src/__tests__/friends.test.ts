@@ -639,3 +639,205 @@ describe("POST /api/invites/:id/decline", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/friends/request-by-code
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /api/friends/request-by-code", () => {
+  let senderToken: string;
+  let senderId: string;
+  let recipientToken: string;
+  let recipientInviteCode: string;
+
+  beforeAll(async () => {
+    ({ token: senderToken, userId: senderId } = await registerUser("CodeSender"));
+    const regRes = await request(app)
+      .post("/api/auth/register")
+      .send({ email: testEmail(), displayName: "CodeRecipient", password: "testpassword123" });
+    if (regRes.status !== 201) throw new Error(`Register failed: ${regRes.status}`);
+    recipientToken = regRes.body.token as string;
+    recipientInviteCode = regRes.body.user.inviteCode as string;
+  });
+
+  it("returns 401 without auth token", async () => {
+    const res = await request(app)
+      .post("/api/friends/request-by-code")
+      .send({ inviteCode: recipientInviteCode });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 when inviteCode is missing", async () => {
+    const res = await request(app)
+      .post("/api/friends/request-by-code")
+      .set("Authorization", `Bearer ${senderToken}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when code does not match any user", async () => {
+    const res = await request(app)
+      .post("/api/friends/request-by-code")
+      .set("Authorization", `Bearer ${senderToken}`)
+      .send({ inviteCode: "ZZZZ-000000" });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 when sending to yourself", async () => {
+    // Get senderToken's invite code
+    const meRes = await request(app)
+      .get("/api/users/me")
+      .set("Authorization", `Bearer ${senderToken}`);
+    const selfCode = meRes.body.user.inviteCode as string;
+    const res = await request(app)
+      .post("/api/friends/request-by-code")
+      .set("Authorization", `Bearer ${senderToken}`)
+      .send({ inviteCode: selfCode });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/yourself/i);
+  });
+
+  it("returns 201 with friendshipId on happy path", async () => {
+    const res = await request(app)
+      .post("/api/friends/request-by-code")
+      .set("Authorization", `Bearer ${senderToken}`)
+      .send({ inviteCode: recipientInviteCode });
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty("friendshipId");
+  });
+
+  it("returns 409 when request already exists", async () => {
+    const res = await request(app)
+      .post("/api/friends/request-by-code")
+      .set("Authorization", `Bearer ${senderToken}`)
+      .send({ inviteCode: recipientInviteCode });
+    expect(res.status).toBe(409);
+  });
+
+  it("returns 201 when the target user is not searchable (bypasses privacy)", async () => {
+    // Make recipient non-searchable
+    await request(app)
+      .patch("/api/users/me/privacy")
+      .set("Authorization", `Bearer ${recipientToken}`)
+      .send({ isSearchable: false });
+
+    // A third user sends a request via code — should still work
+    const thirdRes = await request(app)
+      .post("/api/auth/register")
+      .send({ email: testEmail(), displayName: "CodeThird", password: "testpassword123" });
+    const thirdToken = thirdRes.body.token as string;
+
+    const res = await request(app)
+      .post("/api/friends/request-by-code")
+      .set("Authorization", `Bearer ${thirdToken}`)
+      .send({ inviteCode: recipientInviteCode });
+    expect(res.status).toBe(201);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/users/me/privacy
+// ─────────────────────────────────────────────────────────────────────────────
+describe("PATCH /api/users/me/privacy", () => {
+  let userToken: string;
+
+  beforeAll(async () => {
+    ({ token: userToken } = await registerUser("PrivacyUser"));
+  });
+
+  it("returns 401 without auth token", async () => {
+    const res = await request(app)
+      .patch("/api/users/me/privacy")
+      .send({ isSearchable: false });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 for invalid body (missing isSearchable)", async () => {
+    const res = await request(app)
+      .patch("/api/users/me/privacy")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for invalid body (non-boolean)", async () => {
+    const res = await request(app)
+      .patch("/api/users/me/privacy")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({ isSearchable: "yes" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 200 with updated isSearchable on happy path", async () => {
+    const res = await request(app)
+      .patch("/api/users/me/privacy")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({ isSearchable: false });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("success", true);
+    expect(res.body).toHaveProperty("isSearchable", false);
+  });
+
+  it("reflects updated privacy in GET /api/users/me", async () => {
+    const res = await request(app)
+      .get("/api/users/me")
+      .set("Authorization", `Bearer ${userToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.user).toHaveProperty("isSearchable", false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/friends/search — privacy exclusion
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GET /api/friends/search — privacy", () => {
+  let searcherToken: string;
+  let searcherId: string;
+  let hiddenUserToken: string;
+  let hiddenUserId: string;
+  let hiddenDisplayName: string;
+
+  beforeAll(async () => {
+    const uid = randomUUID().slice(0, 8);
+    hiddenDisplayName = `HiddenPriv${uid}`;
+    ({ token: searcherToken, userId: searcherId } = await registerUser(`Searcher${uid}`));
+    const hidRes = await request(app)
+      .post("/api/auth/register")
+      .send({ email: testEmail(), displayName: hiddenDisplayName, password: "testpassword123" });
+    if (hidRes.status !== 201) throw new Error(`Register hidden user failed: ${hidRes.status}`);
+    hiddenUserToken = hidRes.body.token as string;
+    hiddenUserId = hidRes.body.user.id as string;
+
+    // Make the hidden user non-searchable
+    await request(app)
+      .patch("/api/users/me/privacy")
+      .set("Authorization", `Bearer ${hiddenUserToken}`)
+      .send({ isSearchable: false });
+  });
+
+  it("does not return non-searchable users to strangers", async () => {
+    const res = await request(app)
+      .get(`/api/friends/search?q=${encodeURIComponent(hiddenDisplayName)}`)
+      .set("Authorization", `Bearer ${searcherToken}`);
+    expect(res.status).toBe(200);
+    const ids = (res.body.users as { id: string }[]).map((u) => u.id);
+    expect(ids).not.toContain(hiddenUserId);
+  });
+
+  it("does return non-searchable users to existing friends", async () => {
+    // Establish friendship
+    const reqRes = await request(app)
+      .post("/api/friends/request")
+      .set("Authorization", `Bearer ${searcherToken}`)
+      .send({ addresseeId: hiddenUserId });
+    await request(app)
+      .post(`/api/friends/${reqRes.body.friendshipId}/accept`)
+      .set("Authorization", `Bearer ${hiddenUserToken}`);
+
+    const res = await request(app)
+      .get(`/api/friends/search?q=${encodeURIComponent(hiddenDisplayName)}`)
+      .set("Authorization", `Bearer ${searcherToken}`);
+    expect(res.status).toBe(200);
+    const ids = (res.body.users as { id: string }[]).map((u) => u.id);
+    expect(ids).toContain(hiddenUserId);
+  });
+});

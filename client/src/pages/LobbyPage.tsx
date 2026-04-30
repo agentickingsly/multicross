@@ -9,6 +9,7 @@ import {
   getFriends, getFriendRequests, getInvites,
   sendFriendRequest, acceptFriendRequest, declineFriendRequest, removeFriend,
   inviteToGame, acceptInvite, declineInvite, searchUsers,
+  getMe, updatePrivacy, sendFriendRequestByCode,
 } from "../api/client";
 import type {
   ActiveGame, WatchableGame, PuzzleSortOption,
@@ -486,6 +487,80 @@ const s = {
     letterSpacing: "0.06em",
     margin: "1rem 0 0.5rem 0",
   },
+  inviteCodeBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "0.75rem 1rem",
+    background: "#f0fdf4",
+    border: "1.5px solid #bbf7d0",
+    borderRadius: "8px",
+    marginBottom: "1rem",
+    flexWrap: "wrap" as const,
+  },
+  inviteCodeLabel: {
+    fontSize: "0.85rem",
+    color: "#166534",
+    fontWeight: "600",
+  },
+  inviteCodeText: {
+    fontSize: "1rem",
+    fontWeight: "700",
+    color: "#14532d",
+    letterSpacing: "0.08em",
+    background: "none",
+    fontFamily: "monospace",
+  },
+  copyBtn: {
+    background: "#16a34a",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    padding: "0.3rem 0.7rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.78rem",
+  },
+  privacyRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "0.75rem",
+    padding: "0.6rem 0",
+    marginBottom: "0.25rem",
+    borderBottom: "1px solid #f1f5f9",
+    flexWrap: "wrap" as const,
+  },
+  privacyText: {
+    fontSize: "0.82rem",
+    color: "#475569",
+  },
+  tabRow: {
+    display: "flex",
+    gap: "0.5rem",
+    marginBottom: "0.75rem",
+  },
+  codeRow: {
+    display: "flex",
+    gap: "0.5rem",
+    marginBottom: "0.75rem",
+  },
+  codeInput: {
+    flex: 1,
+    padding: "0.5rem 0.75rem",
+    borderRadius: "6px",
+    border: "1.5px solid #cbd5e1",
+    fontSize: "0.9rem",
+    outline: "none",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
+    fontFamily: "monospace",
+  },
+  successText: {
+    color: "#16a34a",
+    fontSize: "0.875rem",
+    marginBottom: "0.5rem",
+  },
 } satisfies Record<string, React.CSSProperties>;
 
 function sortBtnStyle(active: boolean): React.CSSProperties {
@@ -511,6 +586,18 @@ function badgeStyle(status: "draft" | "published"): React.CSSProperties {
     background: status === "published" ? "#dcfce7" : "#fef9c3",
     color: status === "published" ? "#166534" : "#854d0e",
   };
+}
+
+function tabBtnStyle(active: boolean): React.CSSProperties {
+  return active
+    ? { background: "#2563eb", color: "#fff", border: "1.5px solid #2563eb", borderRadius: "6px", padding: "0.3rem 0.85rem", cursor: "pointer", fontWeight: "600", fontSize: "0.8rem" }
+    : { background: "transparent", color: "#475569", border: "1.5px solid #cbd5e1", borderRadius: "6px", padding: "0.3rem 0.85rem", cursor: "pointer", fontWeight: "600", fontSize: "0.8rem" };
+}
+
+function privacyToggleStyle(searchable: boolean): React.CSSProperties {
+  return searchable
+    ? { background: "#2563eb", color: "#fff", border: "none", borderRadius: "20px", padding: "0.3rem 0.85rem", cursor: "pointer", fontWeight: "600", fontSize: "0.78rem", whiteSpace: "nowrap" as const }
+    : { background: "#f1f5f9", color: "#64748b", border: "1.5px solid #cbd5e1", borderRadius: "20px", padding: "0.3rem 0.85rem", cursor: "pointer", fontWeight: "600", fontSize: "0.78rem", whiteSpace: "nowrap" as const };
 }
 
 export default function LobbyPage() {
@@ -562,6 +649,16 @@ export default function LobbyPage() {
   const [invites, setInvites] = useState<GameInviteItem[]>([]);
   const [actingOnInvite, setActingOnInvite] = useState<string | null>(null);
   const [invitingFriendId, setInvitingFriendId] = useState<string | null>(null);
+
+  // Invite code + privacy state
+  const [friendsTab, setFriendsTab] = useState<"search" | "code">("search");
+  const [myInviteCode, setMyInviteCode] = useState("");
+  const [isSearchable, setIsSearchable] = useState(true);
+  const [updatingPrivacy, setUpdatingPrivacy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [sendingByCode, setSendingByCode] = useState(false);
+  const [codeSuccess, setCodeSuccess] = useState("");
 
   const currentUser: User | null = (() => {
     try {
@@ -661,12 +758,36 @@ export default function LobbyPage() {
       .catch(() => {});
   }, []);
 
-  // Load friends when panel opens
+  // Load friends + profile when panel opens
   const friendsLoadedRef = useRef(false);
   useEffect(() => {
     if (!showFriends || friendsLoadedRef.current) return;
     friendsLoadedRef.current = true;
     setLoadingFriends(true);
+
+    // Seed invite code from localStorage if already present, otherwise fetch
+    const storedUser = (() => {
+      try { return JSON.parse(localStorage.getItem("multicross_user") ?? "null"); } catch { return null; }
+    })();
+    if (storedUser?.inviteCode) {
+      setMyInviteCode(storedUser.inviteCode);
+      setIsSearchable(storedUser.isSearchable ?? true);
+    } else {
+      getMe()
+        .then(({ user }) => {
+          setMyInviteCode(user.inviteCode ?? "");
+          setIsSearchable(user.isSearchable ?? true);
+          // Persist to localStorage so future loads skip the fetch
+          const stored = (() => {
+            try { return JSON.parse(localStorage.getItem("multicross_user") ?? "null"); } catch { return null; }
+          })();
+          if (stored) {
+            localStorage.setItem("multicross_user", JSON.stringify({ ...stored, inviteCode: user.inviteCode, isSearchable: user.isSearchable }));
+          }
+        })
+        .catch(() => {});
+    }
+
     Promise.all([getFriends(), getFriendRequests()])
       .then(([friendsData, requestsData]) => {
         setFriends(friendsData.friends);
@@ -747,6 +868,50 @@ export default function LobbyPage() {
       alert(err instanceof Error ? err.message : "Failed to delete puzzle");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function handleCopyInviteCode() {
+    if (!myInviteCode) return;
+    navigator.clipboard.writeText(myInviteCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }
+
+  async function handleTogglePrivacy() {
+    setUpdatingPrivacy(true);
+    setFriendError("");
+    try {
+      const { isSearchable: updated } = await updatePrivacy(!isSearchable);
+      setIsSearchable(updated);
+      const stored = (() => {
+        try { return JSON.parse(localStorage.getItem("multicross_user") ?? "null"); } catch { return null; }
+      })();
+      if (stored) {
+        localStorage.setItem("multicross_user", JSON.stringify({ ...stored, isSearchable: updated }));
+      }
+    } catch (err) {
+      setFriendError(err instanceof Error ? err.message : "Failed to update privacy setting");
+    } finally {
+      setUpdatingPrivacy(false);
+    }
+  }
+
+  async function handleSendByCode() {
+    const code = codeInput.trim();
+    if (!code) return;
+    setSendingByCode(true);
+    setFriendError("");
+    setCodeSuccess("");
+    try {
+      await sendFriendRequestByCode(code);
+      setCodeInput("");
+      setCodeSuccess("Friend request sent!");
+    } catch (err) {
+      setFriendError(err instanceof Error ? err.message : "Failed to send request");
+    } finally {
+      setSendingByCode(false);
     }
   }
 
@@ -937,40 +1102,104 @@ export default function LobbyPage() {
             <h2 style={s.sectionTitle}>Friends</h2>
             {friendError && <div style={s.error}>{friendError}</div>}
 
-            {/* Add friend search */}
-            <p style={s.subsectionTitle}>Add friend</p>
-            <div style={s.searchRow}>
-              <input
-                style={s.searchInput}
-                type="text"
-                placeholder="Search by display name…"
-                value={friendSearch}
-                onChange={(e) => setFriendSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearchUsers()}
-              />
+            {/* Your invite code */}
+            {myInviteCode && (
+              <div style={s.inviteCodeBox}>
+                <span style={s.inviteCodeLabel}>Your invite code:</span>
+                <code style={s.inviteCodeText}>{myInviteCode}</code>
+                <button style={s.copyBtn} onClick={handleCopyInviteCode}>
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            )}
+
+            {/* Privacy toggle */}
+            <div style={s.privacyRow}>
+              <span style={s.privacyText}>
+                {isSearchable
+                  ? "Players can find you by display name"
+                  : "Players cannot find you by display name (share your invite code instead)"}
+              </span>
               <button
-                style={s.searchBtn}
-                onClick={handleSearchUsers}
-                disabled={searching || friendSearch.trim().length < 2}
+                style={privacyToggleStyle(isSearchable)}
+                disabled={updatingPrivacy}
+                onClick={handleTogglePrivacy}
               >
-                {searching ? "Searching…" : "Search"}
+                {isSearchable ? "Discoverable" : "Hidden"}
               </button>
             </div>
-            {searchResults.length > 0 && (
-              <div style={{ marginBottom: "0.75rem" }}>
-                {searchResults.map((user) => (
-                  <div key={user.id} style={s.searchResult}>
-                    <span style={s.friendName}>{user.displayName}</span>
-                    <button
-                      style={s.acceptBtn}
-                      disabled={sendingTo === user.id}
-                      onClick={() => handleSendRequest(user.id)}
-                    >
-                      {sendingTo === user.id ? "Sending…" : "Send request"}
-                    </button>
+
+            {/* Add friend — tabs */}
+            <p style={s.subsectionTitle}>Add friend</p>
+            <div style={s.tabRow}>
+              <button style={tabBtnStyle(friendsTab === "search")} onClick={() => setFriendsTab("search")}>
+                By name
+              </button>
+              <button style={tabBtnStyle(friendsTab === "code")} onClick={() => { setFriendsTab("code"); setCodeSuccess(""); }}>
+                By code
+              </button>
+            </div>
+
+            {friendsTab === "search" && (
+              <>
+                <div style={s.searchRow}>
+                  <input
+                    style={s.searchInput}
+                    type="text"
+                    placeholder="Search by display name…"
+                    value={friendSearch}
+                    onChange={(e) => setFriendSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearchUsers()}
+                  />
+                  <button
+                    style={s.searchBtn}
+                    onClick={handleSearchUsers}
+                    disabled={searching || friendSearch.trim().length < 2}
+                  >
+                    {searching ? "Searching…" : "Search"}
+                  </button>
+                </div>
+                {searchResults.length > 0 && (
+                  <div style={{ marginBottom: "0.75rem" }}>
+                    {searchResults.map((user) => (
+                      <div key={user.id} style={s.searchResult}>
+                        <span style={s.friendName}>{user.displayName}</span>
+                        <button
+                          style={s.acceptBtn}
+                          disabled={sendingTo === user.id}
+                          onClick={() => handleSendRequest(user.id)}
+                        >
+                          {sendingTo === user.id ? "Sending…" : "Send request"}
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
+            )}
+
+            {friendsTab === "code" && (
+              <>
+                {codeSuccess && <div style={s.successText}>{codeSuccess}</div>}
+                <div style={s.codeRow}>
+                  <input
+                    style={s.codeInput}
+                    type="text"
+                    placeholder="e.g. ABCD-EF12GH"
+                    value={codeInput}
+                    onChange={(e) => { setCodeInput(e.target.value.toUpperCase()); setCodeSuccess(""); }}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendByCode()}
+                    maxLength={12}
+                  />
+                  <button
+                    style={s.searchBtn}
+                    onClick={handleSendByCode}
+                    disabled={sendingByCode || codeInput.trim().length < 3}
+                  >
+                    {sendingByCode ? "Sending…" : "Send request"}
+                  </button>
+                </div>
+              </>
             )}
 
             {/* Pending incoming requests */}
@@ -1005,7 +1234,7 @@ export default function LobbyPage() {
             {loadingFriends ? (
               <div style={s.loading}>Loading…</div>
             ) : friends.length === 0 ? (
-              <div style={s.emptyText}>No friends yet — search for people above!</div>
+              <div style={s.emptyText}>No friends yet — search or share your invite code!</div>
             ) : (
               friends.map((friend) => (
                 <div key={friend.friendshipId} style={s.friendRow}>

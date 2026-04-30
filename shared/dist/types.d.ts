@@ -3,6 +3,8 @@ export interface User {
     email: string;
     displayName: string;
     createdAt: string;
+    inviteCode?: string;
+    isSearchable?: boolean;
 }
 export interface Puzzle {
     id: string;
@@ -192,6 +194,19 @@ export interface LoginRequest {
 export interface LoginResponse {
     user: User;
     token: string;
+}
+export interface GetMeResponse {
+    user: User;
+}
+export interface UpdatePrivacyRequest {
+    isSearchable: boolean;
+}
+export interface UpdatePrivacyResponse {
+    success: boolean;
+    isSearchable: boolean;
+}
+export interface FriendRequestByCodeRequest {
+    inviteCode: string;
 }
 export interface ListPuzzlesResponse {
     puzzles: Puzzle[];

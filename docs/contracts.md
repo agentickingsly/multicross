@@ -66,11 +66,14 @@ Base path: `/api`
 | POST | `/friends/:id/accept` | — | `{ success: true }` — addressee only; 404 if not found or already processed |
 | POST | `/friends/:id/decline` | — | `{ success: true }` — addressee only |
 | DELETE | `/friends/:id` | — | `{ success: true }` — either party; 404 if not found |
-| GET | `/friends/search` | query: `q` (min 2 chars) | `{ users: UserSearchResult[] }` — users matching display name |
+| GET | `/friends/search` | query: `q` (min 2 chars) | `{ users: UserSearchResult[] }` — users matching display name; excludes non-searchable users unless already friends with the caller |
+| POST | `/friends/request-by-code` | `{ inviteCode: string }` | `{ friendshipId: uuid }` — finds user by invite code and sends request; bypasses is_searchable; 400 if self-request; 404 if code not found; 409 if already exists |
 | POST | `/games/:id/invite` | `{ inviteeId: uuid }` | `{ inviteId: uuid }` — 400 if not friends or game inactive; 403 if not participant; 409 if pending invite exists |
 | GET | `/invites` | — | `{ invites: GameInviteItem[] }` — pending game invites for current user |
 | POST | `/invites/:id/accept` | — | `{ success: true, gameId: uuid }` — joins game as participant; 400 if game no longer active; 404 if not found |
 | POST | `/invites/:id/decline` | — | `{ success: true }` — 404 if not found |
+| GET | `/users/me` | — | `{ user: User }` — current user profile including inviteCode and isSearchable |
+| PATCH | `/users/me/privacy` | `{ isSearchable: boolean }` | `{ success: true, isSearchable: boolean }` — 400 for non-boolean; 401 without token |
 | POST | `/admin/users/:id/ban` | `{ reason?: string }` | `{ success: true }` — admin only; 403 for non-admin |
 | POST | `/admin/users/:id/unban` | — | `{ success: true }` — admin only |
 | GET | `/admin/users` | query: `page` (default 1), `limit` (default 20, max 100) | `{ users: AdminUser[], total, page, limit, totalPages }` — admin only |
@@ -120,7 +123,7 @@ See `/server/src/db/schema.sql` for full DDL.
 
 | Table | Primary Key | Notable Columns |
 |-------|-------------|-----------------|
-| `users` | `id` (uuid) | `email` (unique), `display_name`, `password_hash`, `is_banned` (bool), `banned_at`, `banned_reason`, `is_admin` (bool) |
+| `users` | `id` (uuid) | `email` (unique), `display_name`, `password_hash`, `is_banned` (bool), `banned_at`, `banned_reason`, `is_admin` (bool), `is_searchable` (bool, default true), `invite_code` (varchar 12, unique) |
 | `puzzles` | `id` (uuid) | `width`, `height`, `grid` (jsonb), `clues` (jsonb) |
 | `games` | `id` (uuid) | `room_code` (unique 6-char), `status` (`waiting`\|`active`\|`complete`\|`abandoned`\|`expired`), `puzzle_id` → puzzles, `created_by` → users, `last_activity_at` (updated on each fill_cell) |
 | `game_participants` | `id` (uuid) | `game_id` → games, `user_id` → users, `color` (hex), unique(game_id, user_id) |
