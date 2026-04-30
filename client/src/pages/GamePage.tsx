@@ -988,7 +988,7 @@ export default function GamePage() {
               <button style={s.contribBtn} onClick={() => setShowContributions(prev => !prev)}>
                 {showContributions ? "Hide contributions" : "Show contributions"}
               </button>
-              {currentUser?.id === game.createdBy && game.status === "waiting" && !isSpectating && (
+              {game.status === "waiting" && !isSpectating && myParticipant && (
                 <button style={s.inviteBtn} onClick={handleOpenInvite}>
                   Invite friends
                 </button>
