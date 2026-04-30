@@ -2,7 +2,6 @@ import { Router } from "express";
 import { z } from "zod";
 import pool from "../db/pool";
 import { pub, getOnlineStatuses } from "../db/redis";
-import { emitToUser } from "../ws/ioInstance";
 import { logger } from "../logger";
 
 const router = Router();
@@ -149,10 +148,8 @@ router.post("/request", async (req, res, next) => {
 
     const wsPayload = { friendshipId, requesterId, requesterDisplayName };
 
-    // Emit directly to addressee's personal Socket.io room
-    await emitToUser(addresseeId, "friend_request", wsPayload);
-
-    // Publish for other server instances
+    // Publish to per-user channel; the pub/sub relay in handlers.ts delivers it
+    // to all server instances (including this one) via the user's personal room.
     await pub
       .publish(
         `channel:user:${addresseeId}`,

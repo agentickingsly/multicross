@@ -3,7 +3,6 @@ import { z } from "zod";
 import { randomBytes } from "crypto";
 import pool from "../db/pool";
 import { pub, getSpectatorCount } from "../db/redis";
-import { emitToUser } from "../ws/ioInstance";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../logger";
 
@@ -515,7 +514,6 @@ router.post("/:id/invite", requireAuth, async (req, res, next) => {
 
     const wsPayload = { inviteId, inviterId, inviterDisplayName, gameId, puzzleTitle };
 
-    await emitToUser(inviteeId, "game_invite", wsPayload);
     await pub
       .publish(
         `channel:user:${inviteeId}`,
