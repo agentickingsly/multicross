@@ -50,6 +50,7 @@ export const ws = {
   },
 
   onConnect(handler: () => void): () => void {
+    if (socket?.connected) handler();
     socket?.on("connect", handler);
     return () => socket?.off("connect", handler);
   },
