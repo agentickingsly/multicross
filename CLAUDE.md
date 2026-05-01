@@ -52,47 +52,17 @@ See `.claude/skills/git-workflow.md` for the full procedure.
 | /docs | contracts.md, redis.md, api.yaml |
 
 ## Established patterns
-
-### Server
-- Server runs on PORT=3001 (default; set in server/.env)
-- All async Express routes use try/catch with next(err)
-- Zod validation on all REST request bodies before any DB access
-- JWT identity always from s.data.user.userId in WS handlers — never from client payload
-- pg pool imported from server/src/db/pool.ts — never create a new pool
-- pino logger imported from server/src/logger.ts — never use console.log
-- New DB columns require a migration in server/src/db/migrations/
-- Migration files are numbered: 001_, 002_, 003_ etc.
-- Rate limiter and WS init are skipped in NODE_ENV=test
-
-### Frontend
-- Auth token: localStorage key "multicross_token"
-- User object: localStorage key "multicross_user" (JSON)
-- API base URL: import.meta.env.VITE_API_URL
-- All REST calls go through apiFetch() in client/src/api/client.ts
-- All WS events go through the singleton in client/src/ws/socket.ts
-- Cell colors use hex + 2-char alpha suffix (e.g. color + "88" = 53% opacity)
-- filledBy in cell payloads is always userId, never displayName
-
-### TypeScript
-- Shared types imported from /shared/src/types.ts
-- Never use 'any' — use unknown and narrow, or define an interface
-- All route handlers typed with Request, Response, NextFunction
+See `postgres-patterns.md`, `react-component.md`, `security-performance.md`, and `crossword-domain.md` for all server and frontend conventions.
 
 ## Puzzle data format
-Grid: (string | null)[][] where null = black cell, "" = empty white, "A"-"Z" = solution
-Clues: { across: Record<number, string>, down: Record<number, string> }
-Clue numbers derived from grid topology — not stored, always computed
-Auto-numbering algorithm lives in client/src/utils/crosswordUtils.ts
+See `crossword-domain.md` for grid format, clue structure, auto-numbering, and color conventions.
 
 ## Hard rules
 1. Never rename a WS event or REST endpoint without updating /docs/contracts.md
-2. Never change the DB schema without a new migration file
-3. Never add a dependency without noting it in your session summary
-4. Never create a new pg Pool — import from server/src/db/pool.ts
-5. Never use console.log — import logger from server/src/logger.ts
-6. Write a DONE.md at the end of every session listing files created/modified
-7. Prefer Sonnet over Opus — only use Opus for genuinely ambiguous problems
-8. Never edit files directly on the VPS — all changes go through Git
+2. Never add a dependency without noting it in your session summary
+3. Write a DONE.md at the end of every session listing files created/modified
+4. Prefer Sonnet over Opus — only use Opus for genuinely ambiguous problems
+5. Never edit files directly on the VPS — all changes go through Git
 
 ## Key contracts
 - WS events + REST endpoints: /docs/contracts.md
@@ -101,27 +71,24 @@ Auto-numbering algorithm lives in client/src/utils/crosswordUtils.ts
 - Shared types: /shared/src/types.ts
 
 ## Test conventions
-- Test emails: testuser+uuid@test.multicross
-- Tests run sequentially (singleFork: true in vitest.config.ts)
-- NODE_ENV=test skips WS init, rate limiting, server listen
-- Cleanup order: game_cells → game_participants → games → users
+See `vitest-testing.md` for test setup, helpers, email convention, and CI config.
 
 ## Skills — read before writing any code
-Always read the relevant skill files from .claude/skills/ before starting work:
 
-- .claude/skills/postgres-patterns.md — DB conventions, query patterns, schema
-- .claude/skills/react-component.md — component structure, style conventions, state patterns
-- .claude/skills/crossword-domain.md — grid format, auto-numbering, puzzle rules
-- .claude/skills/vitest-testing.md — test setup, helpers, what to test
-- .claude/skills/multicross-gotchas.md — project gotchas: shared dist rebuild, ports, deploy chain, seed data, Redis members vs participants
-- .claude/skills/testing.md — when and how to write tests, mocking rules, coverage expectations
-- .claude/skills/code-review.md — self-review checklist to run before marking any task done
-- .claude/skills/security-performance.md — mandatory security and performance rules for all new code
-- .claude/skills/migrations.md — migration naming, local testing, Redis cleanup review, immutability rule
-- .claude/skills/deploy-checklist.md — pre-deploy verification: shared dist, env vars, VPS edit rules
-- .claude/skills/env-vars.md — all env vars, production rules for ALLOWED_ORIGINS and VITE_API_URL, how to add new vars
-- .claude/skills/git-workflow.md — branch roles, deploy steps, no-force-push and no-VPS-edit rules
-- .claude/skills/redis-keys.md — all Redis key patterns, permanent vs ephemeral, deleteGameKeys cleanup rules
+**Always read (every session):**
+- `.claude/skills/code-review.md` — self-review checklist, run before marking any task done
+- `.claude/skills/security-performance.md` — mandatory security and performance rules
+- `.claude/skills/multicross-gotchas.md` — project-specific traps: shared dist, ports, Redis, Express 5
 
-Read all thirteen at the start of every session. They contain patterns that
-must be followed consistently across all sessions.
+**Read when the trigger applies:**
+
+| Trigger | Skill file(s) |
+|---------|---------------|
+| Touching server DB or query code | `postgres-patterns.md` |
+| Touching frontend components or pages | `react-component.md` |
+| Touching grid, clue, or numbering logic | `crossword-domain.md` |
+| Writing or running tests | `vitest-testing.md`, `testing.md` |
+| Adding a DB migration | `migrations.md` |
+| Touching Redis code | `redis-keys.md` |
+| Deploying to production | `deploy-checklist.md`, `git-workflow.md` |
+| Adding or changing env vars | `env-vars.md` |

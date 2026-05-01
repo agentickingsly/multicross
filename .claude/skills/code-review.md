@@ -91,13 +91,7 @@ This is not optional. Work through each checklist item and fix anything found.
       `server/src/db/redis.ts` so it is cleaned up when a game ends
 
 ### Testing
-- [ ] All DB calls in tests use the mocked pool — no test makes a real
-      PostgreSQL connection (real connections cause hangs in CI)
-- [ ] All Redis calls in tests use the mocked ioredis client — no test
-      connects to a real Redis instance
-- [ ] If a test times out, the first thing to check is unmocked async
-      dependencies (pool, redis, socket.io), not the timeout value — increase
-      the timeout only after confirming all external calls are mocked
+See `testing.md` for mocking rules (unit vs. integration) and coverage expectations.
 
 ## How to perform the review
 

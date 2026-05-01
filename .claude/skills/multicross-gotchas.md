@@ -105,13 +105,6 @@ For the full Redis key catalog and rules for adding new keys, see `redis-keys.md
 
 ---
 
-## 6. Migration numbering
-
-See `migrations.md` for the full naming convention, local testing steps, and immutability rule.
-Current files: `001_initial_schema.sql`, `002_puzzle_authoring.sql`. Next migration must be `003_`.
-
----
-
 ## 8. Stale Vite pre-bundle cache after React/Vite upgrades
 
 After any dependency upgrade involving React, ReactDOM, or Vite:

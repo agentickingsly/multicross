@@ -8,10 +8,9 @@ not optional — do not mark a task complete until tests exist and pass.
 ## Setup and helpers
 See `vitest-testing.md` for run commands, the `registerTestUser` helper, auth header helper, and CI config.
 
-## Hard rule: never test against real infrastructure
+## Infrastructure in tests
 
-Mock all PostgreSQL and Redis calls. Tests must pass without a running database
-or Redis instance. Use `vi.mock` at the module level.
+**Unit tests** (module-level `__tests__/` subdirs): mock all PostgreSQL and Redis calls. Tests must pass without a running database or Redis instance. Use `vi.mock` at the module level:
 
 ```ts
 vi.mock("../db/pool", () => ({
@@ -33,10 +32,7 @@ vi.mock("../db/redis", () => ({
 }));
 ```
 
-Exception: integration tests in `server/src/__tests__/` that test full HTTP
-request/response cycles via `supertest` DO use the real DB (see vitest-testing.md).
-The distinction is: **unit tests** mock infrastructure; **integration tests** use
-the real DB in the test environment.
+**Integration tests** (`server/src/__tests__/`): use the real DB via supertest — that is their purpose. See `vitest-testing.md` for DB setup, helpers, and CI config.
 
 ## File locations
 
