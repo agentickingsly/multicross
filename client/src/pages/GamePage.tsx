@@ -16,6 +16,7 @@ import type {
   ParticipantLeftPayload,
   RoomJoinedPayload,
   SpectatorCountPayload,
+  WordCompletePayload,
 } from "@multicross/shared";
 import type { PuzzleStats } from "@multicross/shared";
 import { getGame, getPuzzle, abandonGame, getPuzzleStats, ratePuzzle, getGameHistory, reportPlayer, joinGameById, getSpectatorCount, getFriends, inviteToGame } from "../api/client";
@@ -94,6 +95,9 @@ export default function GamePage() {
   const [cursors, setCursors] = useState<Record<string, CursorPos>>({});
   const [completion, setCompletion] = useState<GameCompletePayload | null>(null);
   const [gameEnded, setGameEnded] = useState<{ status: "abandoned" | "expired" } | null>(null);
+  const [wordCompletedCells, setWordCompletedCells] = useState<Set<string>>(new Set());
+  const [puzzleCompleting, setPuzzleCompleting] = useState(false);
+  const puzzleCompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const startTimeRef = useRef<number>(Date.now());
@@ -273,8 +277,27 @@ export default function GamePage() {
       });
     });
 
+    const unsubWordComplete = ws.on("word_complete", (payload: WordCompletePayload) => {
+      const cellKeys = payload.cells.map((c) => `${c.row},${c.col}`);
+      setWordCompletedCells((prev) => {
+        const next = new Set(prev);
+        for (const k of cellKeys) next.add(k);
+        return next;
+      });
+      setTimeout(() => {
+        setWordCompletedCells((prev) => {
+          const next = new Set(prev);
+          for (const k of cellKeys) next.delete(k);
+          return next;
+        });
+      }, 800);
+    });
+
     const unsubComplete = ws.on("game_complete", (payload: GameCompletePayload) => {
       setCompletion(payload);
+      setPuzzleCompleting(true);
+      if (puzzleCompleteTimerRef.current) clearTimeout(puzzleCompleteTimerRef.current);
+      puzzleCompleteTimerRef.current = setTimeout(() => setPuzzleCompleting(false), 2600);
     });
 
     const unsubJoined = ws.on("participant_joined", (payload: ParticipantJoinedPayload) => {
@@ -297,6 +320,7 @@ export default function GamePage() {
       unsubSpectatorCount();
       unsubCursor();
       unsubCell();
+      unsubWordComplete();
       unsubComplete();
       unsubJoined();
       unsubLeft();
@@ -1023,6 +1047,9 @@ export default function GamePage() {
             readOnly={isSpectating}
             onCellFill={isSpectating ? undefined : handleCellFill}
             onCursorMove={isSpectating ? undefined : handleCursorMove}
+            wordCompletedCells={wordCompletedCells}
+            puzzleCompleting={puzzleCompleting}
+            animationStyle="subtle"
           />
 
           {showContributions && (

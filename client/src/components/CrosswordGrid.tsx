@@ -21,6 +21,9 @@ interface Props {
   readOnly?: boolean;
   onCellFill?: (row: number, col: number, value: string) => void;
   onCursorMove?: (row: number, col: number) => void;
+  wordCompletedCells?: Set<string>; // "row,col" keys of cells currently animating
+  puzzleCompleting?: boolean;       // true while the celebration animation plays
+  animationStyle?: "subtle" | "celebratory"; // controls animation intensity; default "subtle"
 }
 
 type Direction = "across" | "down";
@@ -78,6 +81,31 @@ function buildClues(
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const ANIM_CSS = `
+@keyframes mc-word-flash {
+  0%   { box-shadow: inset 0 0 0 3px #4ade80cc; }
+  70%  { box-shadow: inset 0 0 0 2px #4ade8044; }
+  100% { box-shadow: inset 0 0 0 0 #4ade8000; }
+}
+@keyframes mc-puzzle-flash-subtle {
+  0%   { box-shadow: inset 0 0 0 0 #fbbf2400; }
+  25%  { box-shadow: inset 0 0 0 4px #fbbf24dd; }
+  65%  { box-shadow: inset 0 0 0 3px #fbbf2488; }
+  100% { box-shadow: inset 0 0 0 0 #fbbf2400; }
+}
+@keyframes mc-puzzle-flash-celebratory {
+  0%   { box-shadow: inset 0 0 0 0 #fbbf2400; }
+  15%  { box-shadow: inset 0 0 0 6px #fbbf24ee; }
+  35%  { box-shadow: inset 0 0 0 6px #4ade80ee; }
+  55%  { box-shadow: inset 0 0 0 6px #60a5faee; }
+  75%  { box-shadow: inset 0 0 0 4px #fbbf24aa; }
+  100% { box-shadow: inset 0 0 0 0 #fbbf2400; }
+}
+.mc-word-flash { animation: mc-word-flash 0.75s ease-out forwards; }
+.mc-puzzle-flash-subtle { animation: mc-puzzle-flash-subtle 1.6s ease-out forwards; }
+.mc-puzzle-flash-celebratory { animation: mc-puzzle-flash-celebratory 2s ease-out forwards; }
+`;
+
 export default function CrosswordGrid({
   puzzle,
   cells,
@@ -92,6 +120,9 @@ export default function CrosswordGrid({
   readOnly = false,
   onCellFill,
   onCursorMove,
+  wordCompletedCells,
+  puzzleCompleting = false,
+  animationStyle = "subtle",
 }: Props) {
   const { grid, height, width } = puzzle;
 
@@ -100,6 +131,15 @@ export default function CrosswordGrid({
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const hiddenInputRef = useRef<HTMLInputElement>(null);
+
+  // Inject animation keyframes once into document head
+  useEffect(() => {
+    if (document.getElementById("mc-cell-animations")) return;
+    const el = document.createElement("style");
+    el.id = "mc-cell-animations";
+    el.textContent = ANIM_CSS;
+    document.head.appendChild(el);
+  }, []);
 
   // Keep focus on container so keyboard events fire
   useEffect(() => {
@@ -613,9 +653,20 @@ export default function CrosswordGrid({
             const isCurrentUserHere =
               selected?.row === r && selected?.col === c;
 
+            // Determine animation class — puzzle takes priority over word
+            const animClass = !isBlack && puzzleCompleting
+              ? `mc-puzzle-flash-${animationStyle}`
+              : !isBlack && wordCompletedCells?.has(key)
+              ? "mc-word-flash"
+              : undefined;
+            const animDelay = !isBlack && puzzleCompleting
+              ? `${(r + c) * 0.04}s`
+              : undefined;
+
             return (
               <div
                 key={key}
+                className={animClass}
                 onPointerDown={(e) => { e.preventDefault(); handleCellClick(r, c); }}
                 style={{
                   width: CELL_SIZE,
@@ -634,6 +685,7 @@ export default function CrosswordGrid({
                     ? `3px solid ${myColor}99`
                     : "none",
                   borderRadius: "2px",
+                  animationDelay: animDelay,
                 }}
               >
                 {!isBlack && num !== undefined && (

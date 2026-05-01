@@ -30,6 +30,7 @@ All events are typed in `/shared/src/types.ts`.
 | `participant_left` | `{ userId: string }` |
 | `game_complete` | `{ completedAt: string, stats: { userId: string, cellsFilled: number }[] }` |
 | `game_abandoned` | `{ gameId: string }` |
+| `word_complete` | `{ cells: Array<{ row: number, col: number }> }` — broadcast to all room members when a word is fully and correctly filled |
 | `spectator_count` | `{ gameId: string, count: number }` — broadcast to all room members when spectator count changes |
 | `friend_request` | `{ friendshipId: string, requesterId: string, requesterDisplayName: string }` — sent to the addressee's personal room when a friend request is received |
 | `game_invite` | `{ inviteId: string, inviterId: string, inviterDisplayName: string, gameId: string, puzzleTitle: string }` — sent to the invitee's personal room when a game invite is received |

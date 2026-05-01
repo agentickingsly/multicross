@@ -55,6 +55,7 @@ const ALLOWED_GAME_EVENTS = new Set([
   "game_complete",
   "game_abandoned",
   "spectator_count",
+  "word_complete",
 ]);
 
 const ALLOWED_USER_EVENTS = new Set([
@@ -454,8 +455,9 @@ export function registerWsHandlers(io: CrosswordServer): void {
           })
         );
 
-        // Check game_complete only when a letter was placed
+        // Check word/game completion only when a letter was placed
         if (normalised !== "" && grid) {
+          await checkWordComplete(io, gameId, row, col, grid);
           await checkGameComplete(io, gameId, grid);
         }
       } catch (err) {
@@ -605,6 +607,76 @@ export function registerWsHandlers(io: CrosswordServer): void {
       logger.info(`[ws] Socket disconnected: ${s.id}`);
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Word complete check
+// ---------------------------------------------------------------------------
+
+async function checkWordComplete(
+  io: CrosswordServer,
+  gameId: string,
+  row: number,
+  col: number,
+  grid: (string | null)[][]
+): Promise<void> {
+  const height = grid.length;
+  const width = grid[0]?.length ?? 0;
+  if (grid[row]?.[col] === null) return;
+
+  const stateHash = await getGameState(gameId);
+
+  function getCellValue(r: number, c: number): string | null {
+    const entry = stateHash[`${r}:${c}`];
+    if (!entry) return null;
+    try {
+      return (JSON.parse(entry) as { value: string }).value;
+    } catch {
+      return null;
+    }
+  }
+
+  function isWordComplete(wordCells: Array<[number, number]>): boolean {
+    return wordCells.every(([r, c]) => {
+      const expected = grid[r]?.[c];
+      if (!expected) return false;
+      const actual = getCellValue(r, c);
+      return actual === expected.toUpperCase();
+    });
+  }
+
+  const completedWordCells: Array<Array<{ row: number; col: number }>> = [];
+
+  // Across word containing (row, col)
+  let startCol = col;
+  while (startCol > 0 && grid[row]?.[startCol - 1] !== null) startCol--;
+  const acrossCells: Array<[number, number]> = [];
+  for (let c = startCol; c < width && grid[row]?.[c] !== null; c++) {
+    acrossCells.push([row, c]);
+  }
+  if (acrossCells.length >= 2 && isWordComplete(acrossCells)) {
+    completedWordCells.push(acrossCells.map(([r, c]) => ({ row: r, col: c })));
+  }
+
+  // Down word containing (row, col)
+  let startRow = row;
+  while (startRow > 0 && grid[startRow - 1]?.[col] !== null) startRow--;
+  const downCells: Array<[number, number]> = [];
+  for (let r = startRow; r < height && grid[r]?.[col] !== null; r++) {
+    downCells.push([r, col]);
+  }
+  if (downCells.length >= 2 && isWordComplete(downCells)) {
+    completedWordCells.push(downCells.map(([r, c]) => ({ row: r, col: c })));
+  }
+
+  for (const cells of completedWordCells) {
+    const payload = { cells };
+    io.to(gameId).emit("word_complete", payload);
+    await pub.publish(
+      `channel:game:${gameId}`,
+      JSON.stringify({ event: "word_complete", payload, sourceSocketId: "__server__" })
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -169,6 +169,10 @@ export interface GameAbandonedPayload {
   gameId: string;
 }
 
+export interface WordCompletePayload {
+  cells: Array<{ row: number; col: number }>;
+}
+
 export interface SpectatorCountPayload {
   gameId: string;
   count: number;
@@ -205,6 +209,7 @@ export interface ServerToClientEvents {
   participant_left: (payload: ParticipantLeftPayload) => void;
   game_complete: (payload: GameCompletePayload) => void;
   game_abandoned: (payload: GameAbandonedPayload) => void;
+  word_complete: (payload: WordCompletePayload) => void;
   spectator_count: (payload: SpectatorCountPayload) => void;
   friend_request: (payload: FriendRequestPayload) => void;
   game_invite: (payload: GameInvitePayload) => void;
