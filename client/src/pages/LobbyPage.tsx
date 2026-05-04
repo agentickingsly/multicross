@@ -1066,6 +1066,11 @@ export default function LobbyPage() {
               <span style={s.badge}>{pendingRequestCount > 9 ? "9+" : pendingRequestCount}</span>
             )}
           </div>
+          {currentUser && (
+            <button style={s.logoutBtn} onClick={() => navigate(`/profile/${currentUser.id}`)}>
+              My Profile
+            </button>
+          )}
           <button style={s.logoutBtn} onClick={handleLogout}>
             Log out
           </button>
