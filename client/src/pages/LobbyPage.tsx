@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useWindowWidth } from "../utils/useWindowWidth";
 import { useNavigate } from "react-router-dom";
-import type { Puzzle, User } from "@multicross/shared";
+import type { Puzzle, User, MatchInvitePayload, MatchStartedPayload } from "@multicross/shared";
 import type { FriendRequestPayload, GameInvitePayload } from "@multicross/shared";
 import {
   getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle,
@@ -16,6 +16,8 @@ import type {
   Friend, FriendRequest, GameInviteItem, UserSearchResult,
 } from "../api/client";
 import { ws } from "../ws/socket";
+import ChallengeModal from "../components/ChallengeModal";
+import IncomingChallengeModal from "../components/IncomingChallengeModal";
 
 const s = {
   page: {
@@ -441,6 +443,16 @@ const s = {
     cursor: "pointer",
     fontSize: "0.78rem",
   },
+  challengeBtn: {
+    background: "#7c3aed",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    padding: "0.3rem 0.7rem",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "0.78rem",
+  },
   requestRow: {
     display: "flex",
     alignItems: "center",
@@ -662,6 +674,10 @@ export default function LobbyPage() {
   const [actingOnInvite, setActingOnInvite] = useState<string | null>(null);
   const [invitingFriendId, setInvitingFriendId] = useState<string | null>(null);
 
+  // Competitive challenge state
+  const [challengingFriend, setChallengingFriend] = useState<{ userId: string; name: string } | null>(null);
+  const [incomingChallenge, setIncomingChallenge] = useState<MatchInvitePayload | null>(null);
+
   // Invite code + privacy state
   const [friendsTab, setFriendsTab] = useState<"search" | "code">("search");
   const [myInviteCode, setMyInviteCode] = useState("");
@@ -712,11 +728,21 @@ export default function LobbyPage() {
       ]);
     });
 
+    const offMatchInvite = ws.on("match_invite", (payload: MatchInvitePayload) => {
+      setIncomingChallenge(payload);
+    });
+
+    const offMatchStarted = ws.on("match_started", (payload: MatchStartedPayload) => {
+      navigate(`/competitive/${payload.matchId}`);
+    });
+
     return () => {
       offFriendRequest();
       offGameInvite();
+      offMatchInvite();
+      offMatchStarted();
     };
-  }, []);
+  }, [navigate]);
 
   // Load puzzles
   useEffect(() => {
@@ -1043,6 +1069,21 @@ export default function LobbyPage() {
 
   return (
     <div style={s.page}>
+      {challengingFriend && (
+        <ChallengeModal
+          friendUserId={challengingFriend.userId}
+          friendName={challengingFriend.name}
+          onClose={() => setChallengingFriend(null)}
+          onChallengeSent={() => setChallengingFriend(null)}
+        />
+      )}
+      {incomingChallenge && (
+        <IncomingChallengeModal
+          payload={incomingChallenge}
+          onAccept={() => setIncomingChallenge(null)}
+          onDecline={() => setIncomingChallenge(null)}
+        />
+      )}
       <header style={s.header}>
         <div style={s.headerTitle}>Multicross</div>
         <div style={s.headerRight}>
@@ -1270,6 +1311,12 @@ export default function LobbyPage() {
                     </button>
                   </div>
                   <div style={s.friendActions}>
+                    <button
+                      style={s.challengeBtn}
+                      onClick={() => setChallengingFriend({ userId: friend.userId, name: friend.displayName })}
+                    >
+                      Challenge
+                    </button>
                     {hasWaitingGame && (
                       <button
                         style={s.inviteGameBtn}

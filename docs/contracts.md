@@ -18,6 +18,9 @@ All events are typed in `/shared/src/types.ts`.
 | `fill_cell` | `{ gameId: string, row: number, col: number, value: string, userId: string }` — silently ignored for spectators |
 | `move_cursor` | `{ gameId: string, row: number, col: number, userId: string }` — silently ignored for spectators |
 | `leave_room` | `{ gameId: string, userId: string }` |
+| `match_accept` | `{ matchId: uuid }` — opponent accepts a pending challenge; server starts the match and timer |
+| `match_decline` | `{ matchId: uuid }` — opponent declines; match set to cancelled, challenger notified via `match_cancelled` |
+| `match_fill_cell` | `{ matchId: uuid, row: number, col: number, value: string }` — value is a single letter or empty string (empty = erase); never relayed to opponent with the value |
 
 ### Server → Client
 
@@ -34,6 +37,11 @@ All events are typed in `/shared/src/types.ts`.
 | `spectator_count` | `{ gameId: string, count: number }` — broadcast to all room members when spectator count changes |
 | `friend_request` | `{ friendshipId: string, requesterId: string, requesterDisplayName: string }` — sent to the addressee's personal room when a friend request is received |
 | `game_invite` | `{ inviteId: string, inviterId: string, inviterDisplayName: string, gameId: string, puzzleTitle: string }` — sent to the invitee's personal room when a game invite is received |
+| `match_invite` | `{ matchId: uuid, challengerName: string, puzzleTitle: string, timeLimitSeconds: number }` — sent to the opponent's personal room when a 1v1 challenge is issued |
+| `match_started` | `{ matchId: uuid, puzzle: Puzzle, opponentId: uuid, timeLimitSeconds: number, startsAt: string }` — sent to both players when the opponent accepts; `opponentId` is the other player's ID from each recipient's perspective |
+| `match_cell_updated` | `{ matchId: uuid, userId: uuid, row: number, col: number, filled: boolean }` — sent to both players when either fills a cell; **no value exposed** — only filled/unfilled state |
+| `match_completed` | `{ matchId: uuid, winnerId: uuid \| null, reason: 'completed' \| 'timeout', challengerCells: number, opponentCells: number }` — sent to both players when match ends; `winnerId` is null on a draw (equal cells at timeout) |
+| `match_cancelled` | `{ matchId: uuid }` — sent to the challenger's personal room when the opponent declines |
 
 ---
 
@@ -76,6 +84,9 @@ Base path: `/api`
 | GET | `/users/:userId/stats` | — | `{ user, stats, friends, isPrivate, viewerIsFriend }` — public profiles visible to all; private profiles return empty stats/friends unless viewer is a confirmed friend; auth optional |
 | GET | `/users/me` | — | `{ user: User }` — current user profile including inviteCode and isSearchable |
 | PATCH | `/users/me/privacy` | `{ isSearchable: boolean }` | `{ success: true, isSearchable: boolean }` — 400 for non-boolean; 401 without token |
+| POST | `/competitive/challenge` | `{ opponentId: uuid, puzzleId: uuid, timeLimitSeconds?: int (60–3600, default 600) }` | `{ matchId: uuid }` — 400 if self-challenge or invalid fields; 403 if not friends; 404 if puzzle not found/unpublished |
+| GET | `/competitive/matches` | — | `{ matches: CompetitiveMatch[] }` — active + recent matches (pending/active/completed/timed_out/cancelled) for the caller, newest first, limit 20 |
+| GET | `/competitive/matches/:matchId` | — | `{ match: CompetitiveMatch, puzzle: Puzzle, ownCells: OwnCell[], opponentCells: OpponentCell[] }` — 403 if caller not a participant; `opponentCells` contains only `{row, col}` with no `value` field |
 | POST | `/admin/users/:id/ban` | `{ reason?: string }` | `{ success: true }` — admin only; 403 for non-admin |
 | POST | `/admin/users/:id/unban` | — | `{ success: true }` — admin only |
 | GET | `/admin/users` | query: `page` (default 1), `limit` (default 20, max 100) | `{ users: AdminUser[], total, page, limit, totalPages }` — admin only |
@@ -137,6 +148,8 @@ See `/server/src/db/schema.sql` for full DDL.
 | `game_moves` | `id` (uuid) | `game_id` → games, `user_id` → users, `row`, `col`, `value` (text, empty=deletion), `created_at` — append-only move history; not updated on re-fill |
 | `puzzle_ratings` | `id` (uuid) | `puzzle_id` → puzzles, `user_id` → users, `difficulty` (1-5), `enjoyment` (1-5), unique(puzzle_id, user_id) |
 | `game_reports` | `id` (uuid) | `game_id` → games (CASCADE), `reporter_id` → users (CASCADE), `reported_user_id` → users (CASCADE), `reason` (text), `created_at` |
+| `competitive_matches` | `id` (uuid) | `challenger_id` → users, `opponent_id` → users, `puzzle_id` → puzzles, `status` (text: pending\|active\|completed\|cancelled\|timed_out), `time_limit_seconds` (int), `started_at`, `completed_at`, `winner_id` → users (nullable) |
+| `competitive_cells` | `id` (uuid) | `match_id` → competitive_matches (CASCADE), `user_id` → users, `row`, `col`, `value` (text), `filled_at`; unique(match_id, user_id, row, col) |
 
 ---
 

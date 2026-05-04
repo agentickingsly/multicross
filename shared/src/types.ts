@@ -192,6 +192,64 @@ export interface GameInvitePayload {
   puzzleTitle: string;
 }
 
+// ============================================================
+// Competitive mode — WebSocket event payloads
+// ============================================================
+
+// Server → Client
+
+export interface MatchInvitePayload {
+  matchId: string;
+  challengerName: string;
+  puzzleTitle: string;
+  timeLimitSeconds: number;
+}
+
+export interface MatchStartedPayload {
+  matchId: string;
+  puzzle: Puzzle;
+  opponentId: string;
+  timeLimitSeconds: number;
+  startsAt: string;
+}
+
+export interface MatchCellUpdatedPayload {
+  matchId: string;
+  userId: string;
+  row: number;
+  col: number;
+  filled: boolean;
+}
+
+export interface MatchCompletedPayload {
+  matchId: string;
+  winnerId: string | null;
+  reason: 'completed' | 'timeout';
+  challengerCells: number;
+  opponentCells: number;
+}
+
+export interface MatchCancelledPayload {
+  matchId: string;
+}
+
+// Client → Server
+
+export interface MatchFillCellPayload {
+  matchId: string;
+  row: number;
+  col: number;
+  value: string;
+}
+
+export interface MatchAcceptPayload {
+  matchId: string;
+}
+
+export interface MatchDeclinePayload {
+  matchId: string;
+}
+
 /** Union map of all WS event names to their payload types */
 export interface ClientToServerEvents {
   join_room: (payload: JoinRoomPayload) => void;
@@ -199,6 +257,9 @@ export interface ClientToServerEvents {
   fill_cell: (payload: FillCellPayload) => void;
   move_cursor: (payload: MoveCursorPayload) => void;
   leave_room: (payload: LeaveRoomPayload) => void;
+  match_fill_cell: (payload: MatchFillCellPayload) => void;
+  match_accept: (payload: MatchAcceptPayload) => void;
+  match_decline: (payload: MatchDeclinePayload) => void;
 }
 
 export interface ServerToClientEvents {
@@ -213,6 +274,11 @@ export interface ServerToClientEvents {
   spectator_count: (payload: SpectatorCountPayload) => void;
   friend_request: (payload: FriendRequestPayload) => void;
   game_invite: (payload: GameInvitePayload) => void;
+  match_invite: (payload: MatchInvitePayload) => void;
+  match_started: (payload: MatchStartedPayload) => void;
+  match_cell_updated: (payload: MatchCellUpdatedPayload) => void;
+  match_completed: (payload: MatchCompletedPayload) => void;
+  match_cancelled: (payload: MatchCancelledPayload) => void;
 }
 
 // ============================================================
@@ -349,4 +415,59 @@ export interface GetUserStatsResponse {
   friends: ProfileFriend[];
   isPrivate: boolean;
   viewerIsFriend: boolean;
+}
+
+// ============================================================
+// Competitive mode — REST shapes
+// ============================================================
+
+export interface CompetitiveMatch {
+  id: string;
+  challengerId: string;
+  opponentId: string;
+  puzzleId: string;
+  status: 'pending' | 'active' | 'completed' | 'cancelled' | 'timed_out';
+  timeLimitSeconds: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  winnerId: string | null;
+  createdAt: string;
+  puzzleTitle: string;
+  challengerName: string;
+  opponentName: string;
+}
+
+/** Opponent cell: value omitted — only filled/unfilled visible */
+export interface OpponentCell {
+  row: number;
+  col: number;
+}
+
+export interface OwnCell {
+  row: number;
+  col: number;
+  value: string;
+}
+
+// POST /api/competitive/challenge
+export interface ChallengeRequest {
+  opponentId: string;
+  puzzleId: string;
+  timeLimitSeconds?: number;
+}
+export interface ChallengeResponse {
+  matchId: string;
+}
+
+// GET /api/competitive/matches
+export interface ListMatchesResponse {
+  matches: CompetitiveMatch[];
+}
+
+// GET /api/competitive/matches/:matchId
+export interface GetMatchResponse {
+  match: CompetitiveMatch;
+  puzzle: Puzzle;
+  ownCells: OwnCell[];
+  opponentCells: OpponentCell[];
 }

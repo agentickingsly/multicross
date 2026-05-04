@@ -6,6 +6,7 @@ import LobbyPage from "./pages/LobbyPage";
 import GamePage from "./pages/GamePage";
 import EditorPage from "./pages/EditorPage";
 import ProfilePage from "./pages/ProfilePage";
+import CompetitivePage from "./pages/CompetitivePage";
 
 function isTokenExpired(token: string): boolean {
   try {
@@ -66,6 +67,14 @@ export default function App() {
         }
       />
       <Route path="/profile/:userId" element={<ProfilePage />} />
+      <Route
+        path="/competitive/:matchId"
+        element={
+          <ProtectedRoute>
+            <CompetitivePage />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }

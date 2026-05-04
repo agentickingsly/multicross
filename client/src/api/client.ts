@@ -11,6 +11,9 @@ import type {
   GetMeResponse,
   UpdatePrivacyResponse,
   GetUserStatsResponse,
+  ChallengeResponse,
+  ListMatchesResponse,
+  GetMatchResponse,
 } from "@multicross/shared";
 
 const BASE_URL = `${import.meta.env.VITE_API_URL}/api`;
@@ -353,4 +356,25 @@ export function ratePuzzle(
     method: "POST",
     body: JSON.stringify({ difficulty, enjoyment }),
   });
+}
+
+// ─── Competitive ──────────────────────────────────────────────────────────────
+
+export function challengeFriend(
+  opponentId: string,
+  puzzleId: string,
+  timeLimitSeconds: number
+): Promise<ChallengeResponse> {
+  return apiFetch<ChallengeResponse>("/competitive/challenge", {
+    method: "POST",
+    body: JSON.stringify({ opponentId, puzzleId, timeLimitSeconds }),
+  });
+}
+
+export function getCompetitiveMatches(): Promise<ListMatchesResponse> {
+  return apiFetch<ListMatchesResponse>("/competitive/matches");
+}
+
+export function getCompetitiveMatch(matchId: string): Promise<GetMatchResponse> {
+  return apiFetch<GetMatchResponse>(`/competitive/matches/${matchId}`);
 }

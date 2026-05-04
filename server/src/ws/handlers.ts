@@ -1,7 +1,10 @@
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import type { Server, Socket } from "socket.io";
-import type { ClientToServerEvents, ServerToClientEvents, GameParticipant, GameCell } from "@multicross/shared";
+import type {
+  ClientToServerEvents, ServerToClientEvents, GameParticipant, GameCell,
+  MatchCompletedPayload,
+} from "@multicross/shared";
 import { logger } from "../logger";
 import pool from "../db/pool";
 import {
@@ -43,6 +46,19 @@ const moveCursorSchema = z.object({
 });
 const leaveRoomSchema = z.object({ gameId: z.string().uuid() });
 
+const matchAcceptSchema  = z.object({ matchId: z.string().uuid() });
+const matchDeclineSchema = z.object({ matchId: z.string().uuid() });
+const matchFillCellSchema = z.object({
+  matchId: z.string().uuid(),
+  row:     z.number().int().min(0).max(99),
+  col:     z.number().int().min(0).max(99),
+  value:   z.string().regex(/^[A-Za-z]?$/),
+});
+
+// TODO: timer references are lost on server restart — timed_out matches will
+// remain in 'active' status until a future restart-recovery job is added.
+const matchTimers = new Map<string, NodeJS.Timeout>();
+
 // ---------------------------------------------------------------------------
 // Whitelisted pub/sub event names (split by channel type)
 // ---------------------------------------------------------------------------
@@ -61,6 +77,11 @@ const ALLOWED_GAME_EVENTS = new Set([
 const ALLOWED_USER_EVENTS = new Set([
   "friend_request",
   "game_invite",
+  "match_invite",
+  "match_started",
+  "match_cell_updated",
+  "match_completed",
+  "match_cancelled",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -546,6 +567,258 @@ export function registerWsHandlers(io: CrosswordServer): void {
     });
 
     // -----------------------------------------------------------------------
+    // match_accept
+    // -----------------------------------------------------------------------
+    s.on("match_accept", async (data) => {
+      const parsed = matchAcceptSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { matchId } = parsed.data;
+      try {
+        const userId = s.data.user.userId;
+
+        const matchResult = await pool.query(
+          `SELECT m.id, m.challenger_id, m.opponent_id, m.puzzle_id, m.time_limit_seconds,
+                  p.title AS puzzle_title,
+                  uc.display_name AS challenger_name
+           FROM competitive_matches m
+           JOIN puzzles p ON p.id = m.puzzle_id
+           JOIN users uc  ON uc.id = m.challenger_id
+           WHERE m.id = $1`,
+          [matchId]
+        );
+        const match = matchResult.rows[0];
+        if (!match) { s.emit("error" as any, { error: "Match not found" }); return; }
+        if (match.opponent_id !== userId) { s.emit("error" as any, { error: "Not the opponent" }); return; }
+
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const updated = await client.query(
+            `UPDATE competitive_matches SET status = 'active', started_at = now()
+             WHERE id = $1 AND status = 'pending'
+             RETURNING started_at`,
+            [matchId]
+          );
+          if (!updated.rows[0]) {
+            await client.query("ROLLBACK");
+            s.emit("error" as any, { error: "Match no longer pending" });
+            return;
+          }
+          await client.query("COMMIT");
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
+
+        const puzzleResult = await pool.query(
+          `SELECT id, title, author, author_id, width, height, grid, clues, status, created_at, updated_at
+           FROM puzzles WHERE id = $1`,
+          [match.puzzle_id]
+        );
+        const pr = puzzleResult.rows[0];
+        const puzzle = {
+          id: pr.id as string,
+          title: pr.title as string,
+          author: pr.author as string,
+          width: pr.width as number,
+          height: pr.height as number,
+          grid: pr.grid as (string | null)[][],
+          clues: pr.clues as { across: Record<number, string>; down: Record<number, string> },
+          createdAt: pr.created_at as string,
+        };
+
+        const startedAtResult = await pool.query(
+          `SELECT started_at FROM competitive_matches WHERE id = $1`,
+          [matchId]
+        );
+        const startsAt: string = (startedAtResult.rows[0]?.started_at as Date).toISOString();
+        const timeLimitSeconds: number = match.time_limit_seconds as number;
+
+        const challengerId: string = match.challenger_id;
+        const opponentId: string = match.opponent_id;
+
+        // Send match_started to both players via their personal rooms
+        const challengerPayload = {
+          matchId,
+          puzzle,
+          opponentId,
+          timeLimitSeconds,
+          startsAt,
+        };
+        const opponentPayload = {
+          matchId,
+          puzzle,
+          opponentId: challengerId,
+          timeLimitSeconds,
+          startsAt,
+        };
+
+        io.to(`user:${challengerId}`).emit("match_started", challengerPayload);
+        io.to(`user:${opponentId}`).emit("match_started", opponentPayload);
+
+        await Promise.all([
+          pub.publish(
+            `channel:user:${challengerId}`,
+            JSON.stringify({ event: "match_started", payload: challengerPayload, sourceSocketId: s.id })
+          ),
+          pub.publish(
+            `channel:user:${opponentId}`,
+            JSON.stringify({ event: "match_started", payload: opponentPayload, sourceSocketId: s.id })
+          ),
+        ]);
+
+        startMatchTimer(io, matchId, challengerId, opponentId, timeLimitSeconds);
+        logger.info({ matchId, challengerId, opponentId }, "[ws] match_accept: match started");
+      } catch (err) {
+        logger.error({ err }, "[ws] match_accept error");
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // match_decline
+    // -----------------------------------------------------------------------
+    s.on("match_decline", async (data) => {
+      const parsed = matchDeclineSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { matchId } = parsed.data;
+      try {
+        const userId = s.data.user.userId;
+
+        const updated = await pool.query(
+          `UPDATE competitive_matches SET status = 'cancelled'
+           WHERE id = $1 AND opponent_id = $2 AND status = 'pending'
+           RETURNING challenger_id`,
+          [matchId, userId]
+        );
+        if (!updated.rows[0]) {
+          s.emit("error" as any, { error: "Match not found or not pending" });
+          return;
+        }
+        const challengerId: string = updated.rows[0].challenger_id;
+
+        const cancelPayload = { matchId };
+        io.to(`user:${challengerId}`).emit("match_cancelled", cancelPayload);
+        await pub.publish(
+          `channel:user:${challengerId}`,
+          JSON.stringify({ event: "match_cancelled", payload: cancelPayload, sourceSocketId: s.id })
+        );
+        logger.info({ matchId }, "[ws] match_decline: match cancelled");
+      } catch (err) {
+        logger.error({ err }, "[ws] match_decline error");
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // match_fill_cell
+    // -----------------------------------------------------------------------
+    s.on("match_fill_cell", async (data) => {
+      const parsed = matchFillCellSchema.safeParse(data);
+      if (!parsed.success) { s.emit("error" as any, { message: "Invalid payload" }); return; }
+      const { matchId, row, col, value } = parsed.data;
+      try {
+        const userId = s.data.user.userId;
+        const normalised = value.toUpperCase();
+
+        // Validate match is active and user is a participant
+        const matchResult = await pool.query(
+          `SELECT m.challenger_id, m.opponent_id, m.status, p.grid
+           FROM competitive_matches m
+           JOIN puzzles p ON p.id = m.puzzle_id
+           WHERE m.id = $1`,
+          [matchId]
+        );
+        const match = matchResult.rows[0];
+        if (!match) { s.emit("error" as any, { error: "Match not found" }); return; }
+        if (match.status !== "active") { s.emit("error" as any, { error: "Match is not active" }); return; }
+
+        const challengerId: string = match.challenger_id;
+        const opponentId: string = match.opponent_id;
+        if (userId !== challengerId && userId !== opponentId) {
+          s.emit("error" as any, { error: "Not a participant" });
+          return;
+        }
+
+        const grid: (string | null)[][] = match.grid;
+        const cellExpected = grid[row]?.[col];
+        if (cellExpected === null || cellExpected === undefined) {
+          s.emit("error" as any, { error: "Invalid cell position" });
+          return;
+        }
+
+        // Upsert or delete the cell
+        if (normalised !== "") {
+          await pool.query(
+            `INSERT INTO competitive_cells (match_id, user_id, row, col, value, filled_at)
+             VALUES ($1, $2, $3, $4, $5, now())
+             ON CONFLICT (match_id, user_id, row, col)
+             DO UPDATE SET value = EXCLUDED.value, filled_at = now()`,
+            [matchId, userId, row, col, normalised]
+          );
+        } else {
+          await pool.query(
+            `DELETE FROM competitive_cells WHERE match_id = $1 AND user_id = $2 AND row = $3 AND col = $4`,
+            [matchId, userId, row, col]
+          );
+        }
+
+        // Emit match_cell_updated to both players — no letter value
+        const cellUpdatedPayload = {
+          matchId,
+          userId,
+          row,
+          col,
+          filled: normalised !== "",
+        };
+        const otherUserId = userId === challengerId ? opponentId : challengerId;
+        io.to(`user:${userId}`).emit("match_cell_updated", cellUpdatedPayload);
+        io.to(`user:${otherUserId}`).emit("match_cell_updated", cellUpdatedPayload);
+        await Promise.all([
+          pub.publish(
+            `channel:user:${userId}`,
+            JSON.stringify({ event: "match_cell_updated", payload: cellUpdatedPayload, sourceSocketId: s.id })
+          ),
+          pub.publish(
+            `channel:user:${otherUserId}`,
+            JSON.stringify({ event: "match_cell_updated", payload: cellUpdatedPayload, sourceSocketId: s.id })
+          ),
+        ]);
+
+        // Check if the user has completed the puzzle (all non-black cells correct)
+        if (normalised !== "") {
+          const filledResult = await pool.query(
+            `SELECT row, col, value FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
+            [matchId, userId]
+          );
+          const filledMap = new Map<string, string>();
+          for (const fc of filledResult.rows) {
+            filledMap.set(`${fc.row as number}:${fc.col as number}`, (fc.value as string).toUpperCase());
+          }
+
+          let allCorrect = true;
+          for (let r = 0; r < grid.length; r++) {
+            for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
+              const expected = grid[r][c];
+              if (expected === null) continue;
+              if (filledMap.get(`${r}:${c}`) !== expected.toUpperCase()) {
+                allCorrect = false;
+                break;
+              }
+            }
+            if (!allCorrect) break;
+          }
+
+          if (allCorrect) {
+            await resolveMatch(io, matchId, userId, challengerId, opponentId, "completed");
+          }
+        }
+      } catch (err) {
+        logger.error({ err }, "[ws] match_fill_cell error");
+      }
+    });
+
+    // -----------------------------------------------------------------------
     // disconnecting — fires before socket leaves its rooms (s.rooms still populated)
     // disconnect  — fires after; s.rooms is empty by then (Socket.io v4 behaviour)
     //
@@ -607,6 +880,112 @@ export function registerWsHandlers(io: CrosswordServer): void {
       logger.info(`[ws] Socket disconnected: ${s.id}`);
     });
   });
+}
+
+// ---------------------------------------------------------------------------
+// Competitive mode helpers
+// ---------------------------------------------------------------------------
+
+async function resolveMatch(
+  io: CrosswordServer,
+  matchId: string,
+  winnerId: string | null,
+  challengerId: string,
+  opponentId: string,
+  reason: "completed" | "timeout"
+): Promise<void> {
+  // Idempotent: only resolve once
+  const updated = await pool.query(
+    `UPDATE competitive_matches
+     SET status = $1, completed_at = now(), winner_id = $2
+     WHERE id = $3 AND status = 'active'
+     RETURNING id`,
+    [reason === "completed" ? "completed" : "timed_out", winnerId, matchId]
+  );
+  if (!updated.rows[0]) return; // already resolved
+
+  // Clear the timeout if present
+  const timer = matchTimers.get(matchId);
+  if (timer) {
+    clearTimeout(timer);
+    matchTimers.delete(matchId);
+  }
+
+  const [challengerCountResult, opponentCountResult] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) AS cnt FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
+      [matchId, challengerId]
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS cnt FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
+      [matchId, opponentId]
+    ),
+  ]);
+  const challengerCells = parseInt(challengerCountResult.rows[0]?.cnt ?? "0", 10);
+  const opponentCells   = parseInt(opponentCountResult.rows[0]?.cnt   ?? "0", 10);
+
+  const payload: MatchCompletedPayload = {
+    matchId,
+    winnerId,
+    reason,
+    challengerCells,
+    opponentCells,
+  };
+
+  io.to(`user:${challengerId}`).emit("match_completed", payload);
+  io.to(`user:${opponentId}`).emit("match_completed", payload);
+  await Promise.all([
+    pub.publish(
+      `channel:user:${challengerId}`,
+      JSON.stringify({ event: "match_completed", payload, sourceSocketId: "__server__" })
+    ),
+    pub.publish(
+      `channel:user:${opponentId}`,
+      JSON.stringify({ event: "match_completed", payload, sourceSocketId: "__server__" })
+    ),
+  ]);
+
+  logger.info({ matchId, winnerId, reason, challengerCells, opponentCells }, "[ws] match resolved");
+}
+
+function startMatchTimer(
+  io: CrosswordServer,
+  matchId: string,
+  challengerId: string,
+  opponentId: string,
+  timeLimitSeconds: number
+): void {
+  const timer = setTimeout(async () => {
+    matchTimers.delete(matchId);
+    try {
+      const [challengerCountResult, opponentCountResult] = await Promise.all([
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
+          [matchId, challengerId]
+        ),
+        pool.query(
+          `SELECT COUNT(*) AS cnt FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
+          [matchId, opponentId]
+        ),
+      ]);
+      const challengerCells = parseInt(challengerCountResult.rows[0]?.cnt ?? "0", 10);
+      const opponentCells   = parseInt(opponentCountResult.rows[0]?.cnt   ?? "0", 10);
+
+      let winnerId: string | null = null;
+      if (challengerCells > opponentCells) {
+        winnerId = challengerId;
+      } else if (opponentCells > challengerCells) {
+        winnerId = opponentId;
+      }
+      // Equal counts → null (draw)
+
+      await resolveMatch(io, matchId, winnerId, challengerId, opponentId, "timeout");
+    } catch (err) {
+      logger.error({ err }, "[ws] match timer expiry error");
+    }
+  }, timeLimitSeconds * 1000);
+
+  matchTimers.set(matchId, timer);
 }
 
 // ---------------------------------------------------------------------------

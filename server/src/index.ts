@@ -20,6 +20,7 @@ import friendsRouter from "./routes/friends";
 import invitesRouter from "./routes/invites";
 import usersRouter from "./routes/users";
 import statsRouter from "./routes/stats";
+import competitiveRouter from "./routes/competitive";
 import { registerWsHandlers } from "./ws/handlers";
 import { startExpiryJob } from "./jobs/expiry";
 
@@ -79,6 +80,7 @@ app.use("/api/friends", requireAuth, requireNotBanned, friendsRouter);
 app.use("/api/invites", requireAuth, requireNotBanned, invitesRouter);
 app.use("/api/users", optionalAuth, statsRouter);
 app.use("/api/users", requireAuth, requireNotBanned, usersRouter);
+app.use("/api/competitive", requireAuth, requireNotBanned, competitiveRouter);
 app.use("/api/admin", requireAuth, requireNotBanned, requireAdmin, adminRouter);
 
 if (process.env.NODE_ENV === "production") {

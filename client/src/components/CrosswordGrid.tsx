@@ -19,6 +19,8 @@ interface Props {
   lockWord?: boolean;
   skipFilled?: boolean;
   readOnly?: boolean;
+  /** When true, filled cells render as a neutral colour with no letter (opponent view in competitive mode) */
+  hiddenLetters?: boolean;
   onCellFill?: (row: number, col: number, value: string) => void;
   onCursorMove?: (row: number, col: number) => void;
   wordCompletedCells?: Set<string>; // "row,col" keys of cells currently animating
@@ -118,6 +120,7 @@ export default function CrosswordGrid({
   lockWord = false,
   skipFilled = false,
   readOnly = false,
+  hiddenLetters = false,
   onCellFill,
   onCursorMove,
   wordCompletedCells,
@@ -560,6 +563,9 @@ export default function CrosswordGrid({
     const value = cellValueMap.get(key);
     const isCorrect = value && value.toUpperCase() === grid[row][col]?.toUpperCase();
 
+    // Opponent view: filled cells shown as neutral grey, no colour hints
+    if (hiddenLetters && value) return "#94a3b8";
+
     if (isSelected) return myColor + "88";
     if (showContributions && value) {
       const filler = filledByMap.get(key);
@@ -705,7 +711,7 @@ export default function CrosswordGrid({
                     {num}
                   </span>
                 )}
-                {!isBlack && value && (
+                {!isBlack && value && !hiddenLetters && (
                   <span
                     style={{
                       fontSize: CELL_SIZE * 0.48,

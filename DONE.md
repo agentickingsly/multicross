@@ -1,109 +1,33 @@
-# Session: Player Stats Page
-
-## Files Created
-- `server/src/db/stats.ts` — DB queries: getUserProfile, computeUserStats, getFriendsForProfile, areUsersFriends
-- `server/src/routes/stats.ts` — Route handler: GET /api/users/:userId/stats (optional auth)
-- `client/src/pages/ProfilePage.tsx` — New page at /profile/:userId
-
-## Files Modified
-- `shared/src/types.ts` — Added ProfileStats, ProfileFriend, GetUserStatsResponse
-- `shared/dist/` — Rebuilt after types change
-- `server/src/middleware/auth.ts` — Added optionalAuth middleware
-- `server/src/index.ts` — Registered statsRouter (with optionalAuth + statsLimiter), added statsLimiter
-- `client/src/api/client.ts` — Added getUserStats(), imported GetUserStatsResponse
-- `client/src/App.tsx` — Added /profile/:userId route (not behind ProtectedRoute)
-- `client/src/pages/LobbyPage.tsx` — Friend names now link to /profile/:userId
-- `docs/contracts.md` — Added GET /api/users/:userId/stats endpoint, ProfileStats and ProfileFriend types
-
-## Privacy logic
-- is_searchable = true → public profile (anyone can view)
-- is_searchable = false → private profile (only confirmed friends can view)
-- Server determines canViewFull = !isPrivate || viewerIsFriend || isOwnProfile
-- Returns empty stats/friends when private and viewer is not a friend
-- Frontend detects own profile via currentUser.id === params.userId (from localStorage)
-
-## Test results
-185 tests passing (10 test files). No regressions.
-
-## Dependencies added
-None.
-
----
-
-# Session: Profile Privacy & Friend Invite Codes
-
-## Files Created
-- `server/src/db/migrations/009_profile_privacy_and_invite_codes.sql` — adds `is_searchable` boolean and `invite_code varchar(12)` to users; backfills existing users; unique constraint + index
-- `server/src/routes/users.ts` — GET /api/users/me, PATCH /api/users/me/privacy
-
-## Files Modified
-- `server/src/routes/auth.ts` — generates friend invite code on register; returns `inviteCode` + `isSearchable` in both register and login responses
-- `server/src/routes/friends.ts` — updated GET /search to exclude non-searchable users (unless already friends); added POST /request-by-code before /:id routes
-- `server/src/index.ts` — imports and mounts usersRouter at /api/users
-- `server/src/__tests__/friends.test.ts` — added 3 new describe blocks: POST /request-by-code (7 tests), PATCH /api/users/me/privacy (5 tests), GET /friends/search privacy exclusion (2 tests)
-- `shared/src/types.ts` — added `inviteCode?` + `isSearchable?` to User; added GetMeResponse, UpdatePrivacyRequest, UpdatePrivacyResponse, FriendRequestByCodeRequest
-- `shared/dist/types.js` + `shared/dist/types.d.ts` — rebuilt after types change
-- `client/src/api/client.ts` — added getMe(), updatePrivacy(), sendFriendRequestByCode()
-- `client/src/pages/LobbyPage.tsx` — Friends panel: invite code display with Copy button; Discoverable/Hidden privacy toggle; "By name"/"By code" tabs; code input with success message
-- `docs/contracts.md` — documented 3 new endpoints; updated users table schema summary; updated GET /friends/search description
-
-## Test results
-185 tests passing (10 test files). No regressions.
-
----
-
-# Session: Friends list and game invite system
+# Session: Competitive 1v1 Mode
 
 ## Files created
 
-### Server
-- `server/src/db/migrations/008_friends_and_invites.sql` — creates `friendships` (enum, table, indexes) and `game_invites` (enum, table, index)
-- `server/src/routes/friends.ts` — GET /friends, GET /friends/requests, GET /friends/search, POST /friends/request, POST /friends/:id/accept, POST /friends/:id/decline, DELETE /friends/:id
-- `server/src/routes/invites.ts` — GET /invites, POST /invites/:id/accept, POST /invites/:id/decline
-- `server/src/ws/ioInstance.ts` — singleton io holder; `setIo(io)` called from WS handler init; `emitToUser(userId, event, payload)` used by routes to emit to user's personal Socket.io room
-- `server/src/__tests__/friends.test.ts` — 34 integration tests covering request/accept/decline/remove, friend list, game invite happy path, non-friend rejection, 401s, 409s, 404s
-
-### Docs
-- `docs/redis.md` — documented `user:{userId}:connections` (presence counter) and `channel:user:{userId}` (per-user pub/sub)
+| File | Purpose |
+|------|---------|
+| `server/src/db/migrations/010_competitive_mode.sql` | DB migration: competitive_matches + competitive_cells tables + indexes |
+| `server/src/routes/competitive.ts` | REST routes: POST /challenge, GET /matches, GET /matches/:matchId |
+| `client/src/components/ChallengeModal.tsx` | Modal for picking puzzle + time limit and sending a challenge |
+| `client/src/components/IncomingChallengeModal.tsx` | Modal shown when match_invite WS event arrives |
+| `client/src/pages/CompetitivePage.tsx` | /competitive/:matchId — side-by-side boards, countdown timer, result overlay |
 
 ## Files modified
 
-### Server
-- `server/src/db/redis.ts` — added `incrementUserConnections`, `decrementUserConnections`, `getOnlineStatuses` for online presence
-- `server/src/routes/games.ts` — added `POST /:id/invite` endpoint; imports `emitToUser`
-- `server/src/ws/handlers.ts` — calls `setIo(io)` on startup; each socket joins `user:{userId}` personal room; increments/decrements connection counter; `subscribeToUserChannel` per user; pub/sub relay split into game vs user channels (`ALLOWED_GAME_EVENTS` / `ALLOWED_USER_EVENTS`)
-- `server/src/index.ts` — registers `friendsRouter` at `/api/friends` and `invitesRouter` at `/api/invites`
+| File | Change |
+|------|--------|
+| `shared/src/types.ts` | Added 8 new WS payload interfaces + 5 server→client events + 3 client→server events + REST response shapes |
+| `shared/dist/types.js` / `shared/dist/types.d.ts` | Rebuilt after types change |
+| `server/src/index.ts` | Mounted competitiveRouter at /api/competitive |
+| `server/src/ws/handlers.ts` | Added ALLOWED_USER_EVENTS for match events; matchTimers Map; match_accept / match_decline / match_fill_cell handlers; resolveMatch() + startMatchTimer() helpers |
+| `client/src/components/CrosswordGrid.tsx` | Added optional hiddenLetters prop (fills show as neutral grey #94a3b8, no letter rendered) |
+| `client/src/api/client.ts` | Added challengeFriend(), getCompetitiveMatches(), getCompetitiveMatch() |
+| `client/src/pages/LobbyPage.tsx` | Added ChallengeModal + IncomingChallengeModal; match_invite + match_started WS listeners; Challenge button on each friend row |
+| `client/src/App.tsx` | Added /competitive/:matchId protected route |
+| `docs/contracts.md` | Documented all 8 new WS events and 3 new REST endpoints; updated DB schema table |
 
-### Shared
-- `shared/src/types.ts` — added `Friendship`, `GameInvite` domain models; `FriendRequestPayload`, `GameInvitePayload` WS types; extended `ServerToClientEvents` with `friend_request` and `game_invite`
-- `shared/dist/types.js`, `shared/dist/types.d.ts` — rebuilt after types.ts changes
+## Design notes
 
-### Client
-- `client/src/api/client.ts` — added `getFriends`, `getFriendRequests`, `searchUsers`, `sendFriendRequest`, `acceptFriendRequest`, `declineFriendRequest`, `removeFriend`, `inviteToGame`, `getInvites`, `acceptInvite`, `declineInvite` plus `Friend`, `FriendRequest`, `GameInviteItem`, `UserSearchResult` types
-- `client/src/pages/LobbyPage.tsx` — added Friends panel (search/add, pending requests with accept/decline, friends list with invite/remove), game invites banner, WS listeners for `friend_request` and `game_invite` real-time events, Friends button in header with badge count
-
-### Docs
-- `docs/contracts.md` — added all new REST endpoints and WS events
-
-## Dependencies added
-None.
-
-## Test results
-171 tests pass (10 test files), including 34 new tests in friends.test.ts.
-
----
-
-# Session: In-game invite modal + duplicate invite fix
-
-## Files modified
-
-### Client
-- `client/src/pages/GamePage.tsx` — added "Invite friends" button (creator-only, waiting status only, non-spectator) in header; invite modal with friends list, online status dots, greyed-out in-game players, "Invited!" state for sent/pending invites; imports `getFriends`, `inviteToGame`, `Friend` from api/client
-
-### Server (duplicate invite bug fix, prior session)
-- `server/src/routes/friends.ts` — removed `emitToUser` direct emit; pub/sub is sole delivery path
-- `server/src/routes/games.ts` — removed `emitToUser` import and call from invite handler
-- `server/src/ws/ioInstance.ts` — removed `emitToUser` export (now only exports `setIo`)
-
-## Dependencies added
-None.
+- All competitive WS events use user channels (channel:user:{id}) — no new socket.io room needed
+- Opponent letter values are never sent over the wire: match_cell_updated carries only `filled: boolean`; GET /matches/:matchId opponent query selects only row/col
+- Server-side timer uses a module-level Map<matchId, NodeJS.Timeout>; timers are lost on restart (documented as TODO in handlers.ts)
+- Draw condition: winnerId = null when cell counts are equal at timeout; frontend shows "Draw" overlay
+- hiddenLetters prop is purely additive — all existing CrosswordGrid callers unaffected
