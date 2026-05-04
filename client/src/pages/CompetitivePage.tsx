@@ -24,8 +24,8 @@ interface MatchMeta {
 
 // Convert OwnCell[] to GameCell[] for CrosswordGrid (value visible)
 function ownCellsToGameCells(cells: OwnCell[]): GameCell[] {
-  return cells.map((c, i) => ({
-    id: String(i),
+  return cells.map((c) => ({
+    id: `${c.row},${c.col}`,
     gameId: "",
     row: c.row,
     col: c.col,
@@ -37,8 +37,8 @@ function ownCellsToGameCells(cells: OwnCell[]): GameCell[] {
 
 // Convert OpponentCell[] to GameCell[] for CrosswordGrid (value hidden — just marks the cell filled)
 function opponentCellsToGameCells(cells: OpponentCell[]): GameCell[] {
-  return cells.map((c, i) => ({
-    id: String(i),
+  return cells.map((c) => ({
+    id: `${c.row},${c.col}`,
     gameId: "",
     row: c.row,
     col: c.col,
