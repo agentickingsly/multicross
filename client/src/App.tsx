@@ -7,6 +7,7 @@ import GamePage from "./pages/GamePage";
 import EditorPage from "./pages/EditorPage";
 import ProfilePage from "./pages/ProfilePage";
 import CompetitivePage from "./pages/CompetitivePage";
+import GlobalNotifications from "./components/GlobalNotifications";
 
 function isTokenExpired(token: string): boolean {
   try {
@@ -25,7 +26,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("multicross_user");
     return <Navigate to="/login" state={{ message: "Session expired" }} replace />;
   }
-  return <>{children}</>;
+  return (
+    <>
+      <GlobalNotifications />
+      {children}
+    </>
+  );
 }
 
 export default function App() {
