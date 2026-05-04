@@ -270,4 +270,23 @@ export interface RatePuzzleRequest {
 export interface RatePuzzleResponse {
     stats: PuzzleStats;
 }
+export interface ProfileStats {
+    gamesPlayed: number;
+    gamesCompleted: number;
+    averageCompletionTimeSeconds: number | null;
+}
+export interface ProfileFriend {
+    userId: string;
+    displayName: string;
+}
+export interface GetUserStatsResponse {
+    user: {
+        id: string;
+        displayName: string;
+    };
+    stats: ProfileStats;
+    friends: ProfileFriend[];
+    isPrivate: boolean;
+    viewerIsFriend: boolean;
+}
 //# sourceMappingURL=types.d.ts.map

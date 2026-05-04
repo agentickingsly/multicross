@@ -11,7 +11,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@multicross/sha
 
 import { logger } from "./logger";
 import pool from "./db/pool";
-import { requireAuth, requireNotBanned, requireAdmin } from "./middleware/auth";
+import { requireAuth, requireNotBanned, requireAdmin, optionalAuth } from "./middleware/auth";
 import authRouter from "./routes/auth";
 import puzzlesRouter from "./routes/puzzles";
 import gamesRouter from "./routes/games";
@@ -19,6 +19,7 @@ import adminRouter from "./routes/admin";
 import friendsRouter from "./routes/friends";
 import invitesRouter from "./routes/invites";
 import usersRouter from "./routes/users";
+import statsRouter from "./routes/stats";
 import { registerWsHandlers } from "./ws/handlers";
 import { startExpiryJob } from "./jobs/expiry";
 
@@ -50,6 +51,14 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const statsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  message: { error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.get("/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
@@ -61,12 +70,14 @@ app.get("/health", async (_req, res) => {
 
 if (process.env.NODE_ENV !== "test") {
   app.use("/api/auth", authLimiter);
+  app.use("/api/users", statsLimiter);
 }
 app.use("/api/auth", authRouter);
 app.use("/api/puzzles", requireAuth, requireNotBanned, puzzlesRouter);
 app.use("/api/games", requireAuth, requireNotBanned, gamesRouter);
 app.use("/api/friends", requireAuth, requireNotBanned, friendsRouter);
 app.use("/api/invites", requireAuth, requireNotBanned, invitesRouter);
+app.use("/api/users", optionalAuth, statsRouter);
 app.use("/api/users", requireAuth, requireNotBanned, usersRouter);
 app.use("/api/admin", requireAuth, requireNotBanned, requireAdmin, adminRouter);
 

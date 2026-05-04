@@ -405,6 +405,18 @@ const s = {
     color: "#1e293b",
     fontSize: "0.9rem",
   },
+  friendNameBtn: {
+    background: "none",
+    border: "none",
+    padding: 0,
+    fontWeight: "500",
+    color: "#1e293b",
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    textDecoration: "underline",
+    textDecorationColor: "transparent",
+    textUnderlineOffset: "2px",
+  },
   friendActions: {
     display: "flex",
     gap: "0.4rem",
@@ -1245,7 +1257,12 @@ export default function LobbyPage() {
                         background: friend.online ? "#22c55e" : "#cbd5e1",
                       }}
                     />
-                    <span style={s.friendName}>{friend.displayName}</span>
+                    <button
+                      style={s.friendNameBtn}
+                      onClick={() => navigate(`/profile/${friend.userId}`)}
+                    >
+                      {friend.displayName}
+                    </button>
                   </div>
                   <div style={s.friendActions}>
                     {hasWaitingGame && (

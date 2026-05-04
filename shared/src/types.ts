@@ -327,3 +327,26 @@ export interface RatePuzzleRequest {
 export interface RatePuzzleResponse {
   stats: PuzzleStats;
 }
+
+// GET /api/users/:userId/stats
+export interface ProfileStats {
+  gamesPlayed: number;
+  gamesCompleted: number;
+  averageCompletionTimeSeconds: number | null;
+}
+
+export interface ProfileFriend {
+  userId: string;
+  displayName: string;
+}
+
+export interface GetUserStatsResponse {
+  user: {
+    id: string;
+    displayName: string;
+  };
+  stats: ProfileStats;
+  friends: ProfileFriend[];
+  isPrivate: boolean;
+  viewerIsFriend: boolean;
+}

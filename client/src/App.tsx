@@ -5,6 +5,7 @@ import RegisterPage from "./pages/RegisterPage";
 import LobbyPage from "./pages/LobbyPage";
 import GamePage from "./pages/GamePage";
 import EditorPage from "./pages/EditorPage";
+import ProfilePage from "./pages/ProfilePage";
 
 function isTokenExpired(token: string): boolean {
   try {
@@ -64,6 +65,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="/profile/:userId" element={<ProfilePage />} />
     </Routes>
   );
 }

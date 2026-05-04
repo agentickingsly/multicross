@@ -1,3 +1,35 @@
+# Session: Player Stats Page
+
+## Files Created
+- `server/src/db/stats.ts` — DB queries: getUserProfile, computeUserStats, getFriendsForProfile, areUsersFriends
+- `server/src/routes/stats.ts` — Route handler: GET /api/users/:userId/stats (optional auth)
+- `client/src/pages/ProfilePage.tsx` — New page at /profile/:userId
+
+## Files Modified
+- `shared/src/types.ts` — Added ProfileStats, ProfileFriend, GetUserStatsResponse
+- `shared/dist/` — Rebuilt after types change
+- `server/src/middleware/auth.ts` — Added optionalAuth middleware
+- `server/src/index.ts` — Registered statsRouter (with optionalAuth + statsLimiter), added statsLimiter
+- `client/src/api/client.ts` — Added getUserStats(), imported GetUserStatsResponse
+- `client/src/App.tsx` — Added /profile/:userId route (not behind ProtectedRoute)
+- `client/src/pages/LobbyPage.tsx` — Friend names now link to /profile/:userId
+- `docs/contracts.md` — Added GET /api/users/:userId/stats endpoint, ProfileStats and ProfileFriend types
+
+## Privacy logic
+- is_searchable = true → public profile (anyone can view)
+- is_searchable = false → private profile (only confirmed friends can view)
+- Server determines canViewFull = !isPrivate || viewerIsFriend || isOwnProfile
+- Returns empty stats/friends when private and viewer is not a friend
+- Frontend detects own profile via currentUser.id === params.userId (from localStorage)
+
+## Test results
+185 tests passing (10 test files). No regressions.
+
+## Dependencies added
+None.
+
+---
+
 # Session: Profile Privacy & Friend Invite Codes
 
 ## Files Created

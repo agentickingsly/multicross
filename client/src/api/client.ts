@@ -10,6 +10,7 @@ import type {
   RatePuzzleResponse,
   GetMeResponse,
   UpdatePrivacyResponse,
+  GetUserStatsResponse,
 } from "@multicross/shared";
 
 const BASE_URL = `${import.meta.env.VITE_API_URL}/api`;
@@ -331,6 +332,10 @@ export function sendFriendRequestByCode(inviteCode: string): Promise<{ friendshi
     method: "POST",
     body: JSON.stringify({ inviteCode }),
   });
+}
+
+export function getUserStats(userId: string): Promise<GetUserStatsResponse> {
+  return apiFetch<GetUserStatsResponse>(`/users/${userId}/stats`);
 }
 
 // ─── Puzzle ratings ───────────────────────────────────────────────────────────

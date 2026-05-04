@@ -73,12 +73,17 @@ Base path: `/api`
 | GET | `/invites` | — | `{ invites: GameInviteItem[] }` — pending game invites for current user |
 | POST | `/invites/:id/accept` | — | `{ success: true, gameId: uuid }` — joins game as participant; 400 if game no longer active; 404 if not found |
 | POST | `/invites/:id/decline` | — | `{ success: true }` — 404 if not found |
+| GET | `/users/:userId/stats` | — | `{ user, stats, friends, isPrivate, viewerIsFriend }` — public profiles visible to all; private profiles return empty stats/friends unless viewer is a confirmed friend; auth optional |
 | GET | `/users/me` | — | `{ user: User }` — current user profile including inviteCode and isSearchable |
 | PATCH | `/users/me/privacy` | `{ isSearchable: boolean }` | `{ success: true, isSearchable: boolean }` — 400 for non-boolean; 401 without token |
 | POST | `/admin/users/:id/ban` | `{ reason?: string }` | `{ success: true }` — admin only; 403 for non-admin |
 | POST | `/admin/users/:id/unban` | — | `{ success: true }` — admin only |
 | GET | `/admin/users` | query: `page` (default 1), `limit` (default 20, max 100) | `{ users: AdminUser[], total, page, limit, totalPages }` — admin only |
 | GET | `/admin/reports` | query: `page` (default 1), `limit` (default 20, max 100) | `{ reports: AdminReport[], total, page, limit, totalPages }` — admin only |
+
+`ProfileStats`: `{ gamesPlayed: number, gamesCompleted: number, averageCompletionTimeSeconds: number | null }`
+
+`ProfileFriend`: `{ userId: uuid, displayName: string }`
 
 `AdminUser`: `{ id, email, displayName, isBanned, bannedAt, bannedReason, isAdmin, createdAt }`
 `AdminReport`: `{ id, gameId, reason, createdAt, reporter: { id, email, displayName }, reportedUser: { id, email, displayName } }`
