@@ -231,6 +231,7 @@ export interface MatchCompletedPayload {
 
 export interface MatchCancelledPayload {
   matchId: string;
+  opponentName: string;
 }
 
 // Client → Server

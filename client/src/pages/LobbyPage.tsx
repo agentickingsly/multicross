@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useWindowWidth } from "../utils/useWindowWidth";
 import { useNavigate } from "react-router-dom";
-import type { Puzzle, User, MatchInvitePayload, MatchStartedPayload } from "@multicross/shared";
+import type { Puzzle, User, MatchInvitePayload, MatchStartedPayload, MatchCancelledPayload } from "@multicross/shared";
 import type { FriendRequestPayload, GameInvitePayload } from "@multicross/shared";
 import {
   getPuzzles, getMyPuzzles, createGame, joinGame, deletePuzzle,
@@ -453,6 +453,22 @@ const s = {
     fontWeight: "600",
     fontSize: "0.78rem",
   },
+  declineToast: {
+    position: "fixed" as const,
+    bottom: "1.5rem",
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#1e293b",
+    color: "#fff",
+    padding: "0.65rem 1.25rem",
+    borderRadius: "8px",
+    fontSize: "0.9rem",
+    fontWeight: "500",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+    cursor: "pointer",
+    zIndex: 2000,
+    whiteSpace: "nowrap" as const,
+  },
   requestRow: {
     display: "flex",
     alignItems: "center",
@@ -677,6 +693,7 @@ export default function LobbyPage() {
   // Competitive challenge state
   const [challengingFriend, setChallengingFriend] = useState<{ userId: string; name: string } | null>(null);
   const [incomingChallenge, setIncomingChallenge] = useState<MatchInvitePayload | null>(null);
+  const [declineToast, setDeclineToast] = useState<string | null>(null);
 
   // Invite code + privacy state
   const [friendsTab, setFriendsTab] = useState<"search" | "code">("search");
@@ -736,11 +753,17 @@ export default function LobbyPage() {
       navigate(`/competitive/${payload.matchId}`);
     });
 
+    const offMatchCancelled = ws.on("match_cancelled", (payload: MatchCancelledPayload) => {
+      setDeclineToast(`${payload.opponentName} declined your challenge`);
+      setTimeout(() => setDeclineToast(null), 5000);
+    });
+
     return () => {
       offFriendRequest();
       offGameInvite();
       offMatchInvite();
       offMatchStarted();
+      offMatchCancelled();
     };
   }, [navigate]);
 
@@ -1083,6 +1106,11 @@ export default function LobbyPage() {
           onAccept={() => setIncomingChallenge(null)}
           onDecline={() => setIncomingChallenge(null)}
         />
+      )}
+      {declineToast && (
+        <div style={s.declineToast} onClick={() => setDeclineToast(null)}>
+          {declineToast}
+        </div>
       )}
       <header style={s.header}>
         <div style={s.headerTitle}>Multicross</div>

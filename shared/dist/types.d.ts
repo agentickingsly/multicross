@@ -193,6 +193,7 @@ export interface MatchCompletedPayload {
 }
 export interface MatchCancelledPayload {
     matchId: string;
+    opponentName: string;
 }
 export interface MatchFillCellPayload {
     matchId: string;

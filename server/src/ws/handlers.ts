@@ -698,7 +698,13 @@ export function registerWsHandlers(io: CrosswordServer): void {
         }
         const challengerId: string = updated.rows[0].challenger_id;
 
-        const cancelPayload = { matchId };
+        const opponentResult = await pool.query(
+          `SELECT display_name FROM users WHERE id = $1`,
+          [userId]
+        );
+        const opponentName: string = opponentResult.rows[0]?.display_name ?? "Your opponent";
+
+        const cancelPayload = { matchId, opponentName };
         io.to(`user:${challengerId}`).emit("match_cancelled", cancelPayload);
         await pub.publish(
           `channel:user:${challengerId}`,
@@ -958,18 +964,42 @@ function startMatchTimer(
   const timer = setTimeout(async () => {
     matchTimers.delete(matchId);
     try {
-      const [challengerCountResult, opponentCountResult] = await Promise.all([
+      // Load the puzzle grid and both players' cells in parallel
+      const [gridResult, challengerCellsResult, opponentCellsResult] = await Promise.all([
         pool.query(
-          `SELECT COUNT(*) AS cnt FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
+          `SELECT p.grid FROM competitive_matches m JOIN puzzles p ON p.id = m.puzzle_id WHERE m.id = $1`,
+          [matchId]
+        ),
+        pool.query(
+          `SELECT row, col, value FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
           [matchId, challengerId]
         ),
         pool.query(
-          `SELECT COUNT(*) AS cnt FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
+          `SELECT row, col, value FROM competitive_cells WHERE match_id = $1 AND user_id = $2`,
           [matchId, opponentId]
         ),
       ]);
-      const challengerCells = parseInt(challengerCountResult.rows[0]?.cnt ?? "0", 10);
-      const opponentCells   = parseInt(opponentCountResult.rows[0]?.cnt   ?? "0", 10);
+
+      const grid: (string | null)[][] = gridResult.rows[0]?.grid ?? [];
+
+      function countCorrect(rows: { row: number; col: number; value: string }[]): number {
+        const filledMap = new Map<string, string>();
+        for (const fc of rows) {
+          filledMap.set(`${fc.row}:${fc.col}`, fc.value.toUpperCase());
+        }
+        let count = 0;
+        for (let r = 0; r < grid.length; r++) {
+          for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
+            const expected = grid[r][c];
+            if (expected === null) continue;
+            if (filledMap.get(`${r}:${c}`) === expected.toUpperCase()) count++;
+          }
+        }
+        return count;
+      }
+
+      const challengerCells = countCorrect(challengerCellsResult.rows);
+      const opponentCells   = countCorrect(opponentCellsResult.rows);
 
       let winnerId: string | null = null;
       if (challengerCells > opponentCells) {
@@ -977,7 +1007,7 @@ function startMatchTimer(
       } else if (opponentCells > challengerCells) {
         winnerId = opponentId;
       }
-      // Equal counts → null (draw)
+      // Equal correct-cell counts → null (draw)
 
       await resolveMatch(io, matchId, winnerId, challengerId, opponentId, "timeout");
     } catch (err) {
