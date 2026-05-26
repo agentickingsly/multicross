@@ -85,27 +85,29 @@ function buildClues(
 
 const ANIM_CSS = `
 @keyframes mc-word-flash {
-  0%   { box-shadow: inset 0 0 0 3px #4ade80cc; }
-  70%  { box-shadow: inset 0 0 0 2px #4ade8044; }
-  100% { box-shadow: inset 0 0 0 0 #4ade8000; }
+  0%   { box-shadow: inset 0 0 4px 2px #00e676cc; transform: scale(1); }
+  20%  { box-shadow: inset 0 0 8px 4px #00e676ff; transform: scale(1.08); }
+  55%  { box-shadow: inset 0 0 5px 2px #00e67666; transform: scale(1); }
+  100% { box-shadow: inset 0 0 0 0 #00e67600;    transform: scale(1); }
 }
 @keyframes mc-puzzle-flash-subtle {
-  0%   { box-shadow: inset 0 0 0 0 #fbbf2400; }
-  25%  { box-shadow: inset 0 0 0 4px #fbbf24dd; }
-  65%  { box-shadow: inset 0 0 0 3px #fbbf2488; }
-  100% { box-shadow: inset 0 0 0 0 #fbbf2400; }
+  0%   { box-shadow: inset 0 0 0 0 #fbbf2400; transform: scale(1); }
+  25%  { box-shadow: inset 0 0 8px 5px #fbbf24dd; transform: scale(1.06); }
+  65%  { box-shadow: inset 0 0 4px 2px #fbbf2488; transform: scale(1); }
+  100% { box-shadow: inset 0 0 0 0 #fbbf2400;    transform: scale(1); }
 }
 @keyframes mc-puzzle-flash-celebratory {
-  0%   { box-shadow: inset 0 0 0 0 #fbbf2400; }
-  15%  { box-shadow: inset 0 0 0 6px #fbbf24ee; }
-  35%  { box-shadow: inset 0 0 0 6px #4ade80ee; }
-  55%  { box-shadow: inset 0 0 0 6px #60a5faee; }
-  75%  { box-shadow: inset 0 0 0 4px #fbbf24aa; }
-  100% { box-shadow: inset 0 0 0 0 #fbbf2400; }
+  0%   { box-shadow: inset 0 0 0 0 #fbbf2400;     transform: scale(1); }
+  15%  { box-shadow: inset 0 0 10px 6px #fbbf24ff; transform: scale(1.06); }
+  30%  { box-shadow: inset 0 0 14px 8px #fbbf24ff; transform: scale(1.12); }
+  50%  { box-shadow: inset 0 0 12px 7px #f97316ff; transform: scale(1.08); }
+  68%  { box-shadow: inset 0 0 10px 6px #ffffffff;  transform: scale(1.04); }
+  82%  { box-shadow: inset 0 0 6px 3px #fbbf24aa;   transform: scale(1); }
+  100% { box-shadow: inset 0 0 0 0 #fbbf2400;     transform: scale(1); }
 }
-.mc-word-flash { animation: mc-word-flash 0.75s ease-out forwards; }
-.mc-puzzle-flash-subtle { animation: mc-puzzle-flash-subtle 1.6s ease-out forwards; }
-.mc-puzzle-flash-celebratory { animation: mc-puzzle-flash-celebratory 2s ease-out forwards; }
+.mc-word-flash            { animation: mc-word-flash 1.2s ease-out forwards; position: relative; z-index: 1; }
+.mc-puzzle-flash-subtle   { animation: mc-puzzle-flash-subtle 1.6s ease-out forwards; position: relative; z-index: 1; }
+.mc-puzzle-flash-celebratory { animation: mc-puzzle-flash-celebratory 2.4s ease-out forwards; position: relative; z-index: 1; }
 `;
 
 export default function CrosswordGrid({
@@ -666,7 +668,7 @@ export default function CrosswordGrid({
               ? "mc-word-flash"
               : undefined;
             const animDelay = !isBlack && puzzleCompleting
-              ? `${(r + c) * 0.04}s`
+              ? `${(r + c) * 0.055}s`
               : undefined;
 
             return (
